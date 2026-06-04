@@ -356,16 +356,19 @@ function showMessage(text, type = 'success') {
 }
 
 function renderUserProfile() {
+  const profileBox = document.querySelector('.user-profile');
   const profileName = document.getElementById('profileName');
   const profileRole = document.getElementById('profileRole');
   if (!profileName || !profileRole) return;
 
   if (currentUser) {
+    if (profileBox) profileBox.style.display = 'flex';
     profileName.textContent = currentUser.name || currentUser.username;
     profileRole.textContent = currentUser.role?.toUpperCase() || 'USUÁRIO';
   } else {
-    profileName.textContent = 'Visitante';
-    profileRole.textContent = 'VISITANTE';
+    if (profileBox) profileBox.style.display = 'none';
+    profileName.textContent = '';
+    profileRole.textContent = '';
   }
 }
 
@@ -665,6 +668,40 @@ function renderMovementsPaginationControls() {
   document.getElementById('movNextBtn').disabled = movementsPaginationState.page >= totalPages;
 }
 
+function renderDashboardAiInsights({
+  predictions,
+  recommendedProducts,
+  averageConfidence,
+  criticalProducts,
+  lowConfidenceProducts,
+  lowHistoryProducts,
+  mlProducts,
+  recommendedTotal,
+  horizonDays
+}) {
+  const insights = document.getElementById('ai-insights');
+  if (!insights) return;
+
+  if (!predictions.length) {
+    insights.innerHTML = '<p>Sem produtos ativos suficientes para calcular uma análise preditiva.</p>';
+    return;
+  }
+
+  const topRecommendation = recommendedProducts[0];
+  const methodSummary = mlProducts > 0
+    ? `${mlProducts} produto(s) com regressão ML.NET`
+    : 'modelo usando média histórica por falta de base suficiente';
+  const recommendationText = topRecommendation
+    ? `Maior prioridade: <strong>${escapeHtml(topRecommendation.product.name)}</strong>, com sugestão de compra de <strong>${topRecommendation.prediction.recommendedOrder}</strong> unidade(s).`
+    : 'Nenhuma compra adicional foi recomendada para o horizonte analisado.';
+
+  insights.innerHTML = `
+    <p><strong>Análise de IA:</strong> horizonte de <strong>${horizonDays}</strong> dia(s), com confiança média de <strong>${averageConfidence}%</strong> e ${methodSummary}.</p>
+    <p>${recommendationText}</p>
+    <p>Resumo operacional: <strong>${criticalProducts}</strong> produto(s) crítico(s), <strong>${recommendedTotal}</strong> unidade(s) recomendada(s) para compra, <strong>${lowConfidenceProducts}</strong> previsão(ões) com baixa confiança e <strong>${lowHistoryProducts}</strong> produto(s) com pouco histórico de saídas.</p>
+  `;
+}
+
 async function loadAISuggestions() {
   try {
     const suggestions = await fetchJson('/api/ai/suggestions');
@@ -694,6 +731,18 @@ async function loadAISuggestions() {
     const lowHistoryProducts = predictions.filter(item => (item.prediction.daysWithOutflow || 0) < 3).length;
     const mlProducts = predictions.filter(item => item.prediction.method === 'ML.NET SDCA Regression').length;
     const recommendedTotal = predictions.reduce((sum, item) => sum + Number(item.prediction.recommendedOrder || 0), 0);
+
+    renderDashboardAiInsights({
+      predictions,
+      recommendedProducts,
+      averageConfidence,
+      criticalProducts,
+      lowConfidenceProducts,
+      lowHistoryProducts,
+      mlProducts,
+      recommendedTotal,
+      horizonDays
+    });
 
     document.getElementById('iaSummaryProducts').textContent = predictions.length;
     document.getElementById('iaSummaryCritical').textContent = criticalProducts;
