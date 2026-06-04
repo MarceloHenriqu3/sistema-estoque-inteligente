@@ -197,7 +197,7 @@ app.MapGet("/api/products", async (int? page, int? pageSize, string? search, str
     var total = await q.CountAsync();
     int p = page.GetValueOrDefault(1);
     int ps = pageSize.GetValueOrDefault(20);
-    var items = await q.OrderBy(pdt => pdt.Name).Skip((p - 1) * ps).Take(ps).ToListAsync();
+    var items = await q.OrderBy(pdt => pdt.Id).Skip((p - 1) * ps).Take(ps).ToListAsync();
     return Results.Json(new { total, page = p, pageSize = ps, items });
 });
 
@@ -216,7 +216,7 @@ app.MapGet("/api/products/export", async (string? search, string? category, stri
         if (status == "Crítico") q = q.Where(p => p.Quantity <= p.MinQuantity);
         else if (status == "Estável") q = q.Where(p => p.Quantity > p.MinQuantity);
     }
-    var list = await q.OrderBy(p => p.Name).ToListAsync();
+    var list = await q.OrderBy(p => p.Id).ToListAsync();
     var sb = new StringBuilder();
     sb.AppendLine("Id,Name,Category,Quantity,MinQuantity,Price,IsActive");
     foreach (var p in list)
@@ -337,6 +337,28 @@ app.MapPut("/api/users/{id}/password", async (int id, PasswordResetDto dto, Inve
     await db.SaveChangesAsync();
 
     return Results.Ok(new { user.Id, user.Username, user.Name, user.Role, user.IsActive });
+});
+
+app.MapDelete("/api/users/{id}", async (int id, InventoryContext db, HttpRequest request) =>
+{
+    if (!IsAdminRequest(request)) return Results.Forbid();
+
+    var requesterIdHeader = request.Headers["X-User-Id"].ToString();
+    if (int.TryParse(requesterIdHeader, out var requesterId) && requesterId == id)
+        return Results.BadRequest("Não é possível excluir o usuário logado.");
+
+    var user = await db.Users.FindAsync(id);
+    if (user == null) return Results.NotFound();
+
+    if (user.Role == "Administrador")
+    {
+        var activeAdmins = await db.Users.CountAsync(u => u.Id != id && u.IsActive && u.Role == "Administrador");
+        if (activeAdmins == 0) return Results.BadRequest("Não é possível excluir o último administrador ativo.");
+    }
+
+    db.Users.Remove(user);
+    await db.SaveChangesAsync();
+    return Results.NoContent();
 });
 
 app.MapGet("/api/products/{id}", async (int id, InventoryContext db) => await db.Products.FindAsync(id) is Product p ? Results.Ok(p) : Results.NotFound());

@@ -142,6 +142,7 @@ async function fetchJson(url, opts) {
 function adminHeaders(extra = {}) {
   return {
     'X-User-Role': currentUser?.role || '',
+    'X-User-Id': currentUser?.id?.toString() || '',
     ...extra
   };
 }
@@ -923,6 +924,7 @@ function renderUsersAdminTable() {
         <div class="table-actions">
           <button type="button" class="btn-table-action ${isSelected ? '' : 'primary'}" onclick="${isSelected ? 'cancelarEdicaoUsuarioAdmin()' : `editarUsuarioAdmin(${user.id})`}">${isSelected ? 'Cancelar' : 'Selecionar'}</button>
           <button type="button" class="btn-table-action ${user.isActive ? 'danger' : 'success'}" onclick="alterarStatusUsuarioAdmin(${user.id}, ${!user.isActive})">${user.isActive ? 'Desativar' : 'Ativar'}</button>
+          ${currentUser?.id === user.id ? '' : `<button type="button" class="btn-table-action danger" onclick="excluirUsuarioAdmin(${user.id})">Excluir</button>`}
         </div>
       </td>
     `;
@@ -988,6 +990,32 @@ async function alterarStatusUsuarioAdmin(userId, isActive) {
   }
 }
 
+async function excluirUsuarioAdmin(userId) {
+  const user = systemUsers.find(item => item.id === userId);
+  if (!user) return;
+
+  if (currentUser?.id === userId) {
+    showMessage('Não é possível excluir o usuário logado.', 'error');
+    return;
+  }
+
+  if (!confirm(`Deseja excluir permanentemente o usuário "${user.username}"?`)) return;
+
+  try {
+    const res = await fetch(apiUrl(`/api/users/${userId}`), {
+      method: 'DELETE',
+      headers: adminHeaders()
+    });
+    if (!res.ok) throw new Error(await res.text());
+
+    showMessage('Usuário excluído com sucesso.', 'success');
+    cancelarEdicaoUsuarioAdmin();
+    await loadUsersAdmin();
+  } catch (err) {
+    showMessage('Erro ao excluir usuário: ' + err.message, 'error');
+  }
+}
+
 function switchTab(tabId) {
   if (!currentUser && tabId !== 'login') {
     showMessage('Faça login para acessar o sistema.', 'error');
@@ -1011,7 +1039,7 @@ function switchTab(tabId) {
     'dashboard': 'Dashboard Inicial',
     'cadastro-produto': 'Cadastrar Novo Produto',
     'categorias': 'Cadastro de Categorias',
-    'estoque': 'Consulta e Filtro de Estoque Real',
+    'estoque': 'Consulta de Estoque',
     'movimentacao': 'Controle de Entrada e Saída via QR Code',
     'historico': 'Histórico e Auditoria de Logs',
     'ia-preditiva': 'Módulo Analítico e Inteligência Artificial'
@@ -1107,7 +1135,7 @@ function atualizarModoFormularioProduto(produtoId = null) {
     : 'Informe os dados do item para gerar seu cadastro e identificador QR.';
   document.getElementById('produtoFormBadge').textContent = isEditing ? 'Modo edição' : 'Novo produto';
   document.getElementById('btnCancelarEdicao').style.display = isEditing ? 'inline-flex' : 'none';
-  document.getElementById('btnSalvarProduto').textContent = isEditing ? 'Atualizar Produto' : 'Salvar Produto e Inserir no SQLite';
+  document.getElementById('btnSalvarProduto').textContent = isEditing ? 'Atualizar Produto' : 'Salvar Produto';
   document.getElementById('codigoQrProduto').value = isEditing ? formatProductCode(produtoId) : 'Gerado automaticamente ao salvar...';
 }
 
