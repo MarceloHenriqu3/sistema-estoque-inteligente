@@ -1,2 +1,11 @@
+levantar o sistema:
 cd server
 dotnet run --urls "http://localhost:5000"
+
+
+comandos de atualização github:
+cd "C:\Users\marce\OneDrive\Desktop\Faculdade\TCC_project_COMPLETO"
+git status
+git add .
+git commit -m "Atualiza projeto"
+git push
