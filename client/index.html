@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema Inteligente de Estoque com Análise Preditiva</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body>
+
+    <aside>
+        <div class="brand">Estoque<span>Inteligente</span></div>
+        <nav>
+            <button id="navLogin" class="nav-btn" onclick="switchTab('login')">Login</button>
+            <button id="navLogout" class="nav-btn auth-only" onclick="logout()" style="display:none;">Sair</button>
+            <button class="nav-btn admin-only" onclick="switchTab('register')">Criar Usuário</button>
+            <button class="nav-btn admin-only" onclick="switchTab('usuarios')">Usuários</button>
+            <button class="nav-btn" onclick="switchTab('dashboard')">Dashboard Inicial</button>
+            <button class="nav-btn" onclick="switchTab('cadastro-produto')">Cadastrar Produto</button>
+            <button class="nav-btn" onclick="switchTab('categorias')">Categorias</button>
+            <button class="nav-btn" onclick="switchTab('estoque')">Consulta de Estoque</button>
+            <button class="nav-btn" onclick="switchTab('movimentacao')">Registrar Movimentação</button>
+            <button class="nav-btn" onclick="switchTab('historico')">Histórico Detalhado</button>
+            <button class="nav-btn" onclick="switchTab('ia-preditiva')">Análise Preditiva IA</button>
+        </nav>
+    </aside>
+
+    <main>
+        <header>
+            <h1 id="page-title">Dashboard Inicial</h1>
+        </header>
+
+        <div id="login" class="tab-content">
+            <div class="form-layout auth-layout">
+                <h2>Login</h2>
+                <form id="loginForm">
+                    <div class="form-row">
+                        <label for="loginUsername">Usuário</label>
+                        <input type="text" id="loginUsername" class="form-control" placeholder="Digite seu nome de usuário" required>
+                    </div>
+                    <div class="form-row">
+                        <label for="loginPassword">Senha</label>
+                        <input type="password" id="loginPassword" class="form-control" placeholder="Digite sua senha" required>
+                    </div>
+                    <button type="submit" class="btn-submit">Acessar Sistema</button>
+                    <p class="auth-note">Apenas um administrador pode criar novos usuários.</p>
+                </form>
+            </div>
+        </div>
+
+        <div id="register" class="tab-content">
+            <div class="form-layout auth-layout">
+                <h2>Criar Novo Usuário</h2>
+                <form id="registerForm">
+                    <div class="form-row">
+                        <label for="registerUsername">Usuário</label>
+                        <input type="text" id="registerUsername" class="form-control" placeholder="Digite um nome de usuário" required>
+                    </div>
+                    <div class="form-row">
+                        <label for="registerName">Nome Completo</label>
+                        <input type="text" id="registerName" class="form-control" placeholder="Nome do usuário" required>
+                    </div>
+                    <div class="form-row">
+                        <label for="registerRole">Perfil</label>
+                        <select id="registerRole" class="form-control" required>
+                            <option value="Administrador">Administrador</option>
+                            <option value="Operador">Operador</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label for="registerPassword">Senha</label>
+                        <input type="password" id="registerPassword" class="form-control" placeholder="Digite sua senha" required>
+                    </div>
+                    <div class="form-row">
+                        <label for="registerPasswordConfirm">Confirme a Senha</label>
+                        <input type="password" id="registerPasswordConfirm" class="form-control" placeholder="Repita a senha" required>
+                    </div>
+                    <button type="submit" class="btn-submit">Criar Conta</button>
+                </form>
+            </div>
+        </div>
+
+        <div id="usuarios" class="tab-content">
+            <div class="form-layout">
+                <div class="form-heading">
+                    <div>
+                        <h2 id="usuarioFormTitulo">Gerenciar Usuário</h2>
+                        <p>Atualize perfil, status e redefina senha dos usuários do sistema.</p>
+                    </div>
+                    <span id="usuarioFormBadge" class="badge bg-primary">Selecione um usuário</span>
+                </div>
+                <form id="formUsuarioAdmin">
+                    <input type="hidden" id="usuarioIdEdicao" value="">
+                    <div class="form-grid-2">
+                        <div>
+                            <label for="usuarioAdminUsername">Usuário</label>
+                            <input type="text" id="usuarioAdminUsername" class="form-control" disabled>
+                        </div>
+                        <div>
+                            <label for="usuarioAdminName">Nome Completo</label>
+                            <input type="text" id="usuarioAdminName" class="form-control" required>
+                        </div>
+                    </div>
+                    <div class="form-grid-2">
+                        <div>
+                            <label for="usuarioAdminRole">Perfil</label>
+                            <select id="usuarioAdminRole" class="form-control" required>
+                                <option value="Administrador">Administrador</option>
+                                <option value="Operador">Operador</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="usuarioAdminPassword">Nova Senha</label>
+                            <input type="password" id="usuarioAdminPassword" class="form-control" placeholder="Preencha apenas para redefinir">
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn-submit" id="btnSalvarUsuarioAdmin">Salvar Alterações</button>
+                        <button type="button" class="btn-submit secondary" onclick="cancelarEdicaoUsuarioAdmin()">Cancelar</button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="table-responsive user-table">
+                <table id="tabelaUsuarios">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Usuário</th>
+                            <th>Nome</th>
+                            <th>Perfil</th>
+                            <th>Status</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="feedbackMessage" class="feedback-message"></div>
+
+        <div id="dashboard" class="tab-content active">
+            <div class="kpi-container">
+                <div class="kpi-card">
+                    <div class="kpi-title">Total de Produtos Ativos</div>
+                    <div class="kpi-value" id="kpi-total-products">—</div>
+                </div>
+                <div class="kpi-card danger">
+                    <div class="kpi-title">Produtos em Estoque Crítico</div>
+                    <div class="kpi-value" id="kpi-critical">—</div>
+                </div>
+                <div class="kpi-card success">
+                    <div class="kpi-title">Movimentações do Dia</div>
+                    <div class="kpi-value" id="kpi-movements-today">—</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-title">Valor Total do Estoque</div>
+                    <div class="kpi-value kpi-currency" id="kpi-stock-value">—</div>
+                </div>
+                <div class="kpi-card danger">
+                    <div class="kpi-title">Produtos Inativos</div>
+                    <div class="kpi-value" id="kpi-inactive-products">—</div>
+                </div>
+                <div class="kpi-card warning">
+                    <div class="kpi-title">Sugestões de Compra (IA)</div>
+                    <div class="kpi-value" id="kpi-ai-suggestions">—</div>
+                </div>
+            </div>
+
+            <div class="dashboard-grid">
+                <div class="ai-panel">
+                    <div class="panel-header">
+                        <div class="panel-title">Produtos Críticos Prioritários</div>
+                    </div>
+                    <div id="dashboard-critical-products" class="dashboard-list"></div>
+                </div>
+
+                <div class="ai-panel">
+                    <div class="panel-header">
+                        <div class="panel-title">Últimas Movimentações</div>
+                    </div>
+                    <div id="dashboard-latest-movements" class="dashboard-list"></div>
+                </div>
+
+                <div class="ai-panel">
+                    <div class="panel-header">
+                        <div class="panel-title">Categorias com Itens Críticos</div>
+                    </div>
+                    <div id="dashboard-critical-categories" class="dashboard-list compact"></div>
+                </div>
+            </div>
+
+            <div class="ai-panel">
+                <div class="panel-header">
+                    <div class="panel-title">Visão Geral dos Insights Automatizados</div>
+                </div>
+                <div class="ai-insights-card" id="ai-insights">
+                    <p><strong>Aviso do Sistema:</strong> Com base na biblioteca de Machine Learning <code>ML.NET</code>, identificamos um padrão de esgotamento iminente para a categoria <strong>Periféricos</strong> nos próximos 15 dias devido à alta volatilidade de saídas registradas hoje.</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="cadastro-produto" class="tab-content">
+            <div class="form-layout">
+                <div class="form-heading">
+                    <div>
+                        <h2 id="produtoFormTitulo">Cadastrar Produto</h2>
+                        <p id="produtoFormSubtitulo">Informe os dados do item para gerar seu cadastro e identificador QR.</p>
+                    </div>
+                    <span id="produtoFormBadge" class="badge bg-primary">Novo produto</span>
+                </div>
+                <form id="formCadastro">
+                    <input type="hidden" id="produtoIdEdicao" value="">
+                    <input type="hidden" id="produtoAtivoEdicao" value="true">
+                    
+                    <div class="form-row">
+                        <label for="nomeProduto">Nome do Produto</label>
+                        <input type="text" id="nomeProduto" class="form-control" placeholder="Ex: Monitor Gamer 24' LED" required>
+                    </div>
+
+                    <div class="form-grid-2">
+                        <div>
+                            <label for="cadCategoria">Categoria</label>
+                            <select id="cadCategoria" class="form-control" required>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="precoUnitario">Preço Unitário (R$)</label>
+                            <input type="number" id="precoUnitario" class="form-control" placeholder="0,00" step="0.01" min="0" required>
+                        </div>
+                    </div>
+
+                    <div class="form-grid-2">
+                        <div>
+                            <label for="qtdInicial">Estoque Inicial</label>
+                            <input type="number" id="qtdInicial" class="form-control" value="0" min="0" required>
+                        </div>
+                        <div>
+                            <label for="nivelCritico">Nível Crítico (Alerta)</label>
+                            <input type="number" id="nivelCritico" class="form-control" value="5" min="0" required>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <label>Código Identificador QR</label>
+                        <input type="text" id="codigoQrProduto" class="form-control" value="Gerado automaticamente ao salvar..." disabled style="opacity: 0.6; cursor: not-allowed;">
+                    </div>
+
+                    <div class="form-row" id="qrcodeContainer" style="display:none; text-align: center;">
+                        <label>QR Code do Produto</label>
+                        <div class="qr-preview">
+                            <div id="qrcodeDisplay"></div>
+                            <strong id="qrcodeLabel"></strong>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn-submit" id="btnSalvarProduto">Salvar Produto</button>
+                        <button type="button" class="btn-submit" id="btnCancelarEdicao" style="display:none; background-color: #6b7280;" onclick="cancelarEdicao()">Cancelar Edição</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div id="categorias" class="tab-content">
+            <div class="form-layout">
+                <div class="form-heading">
+                    <div>
+                        <h2 id="categoriaFormTitulo">Cadastrar Categoria</h2>
+                        <p>Organize os grupos usados no cadastro, filtro e relatórios de produtos.</p>
+                    </div>
+                    <span id="categoriaFormBadge" class="badge bg-primary">Nova categoria</span>
+                </div>
+                <form id="formCategoria">
+                    <input type="hidden" id="categoriaIdEdicao" value="">
+                    <div class="form-row">
+                        <label for="nomeCategoria">Nome da Categoria</label>
+                        <input type="text" id="nomeCategoria" class="form-control" placeholder="Ex: Componentes eletrônicos" required>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn-submit" id="btnSalvarCategoria">Salvar Categoria</button>
+                        <button type="button" class="btn-submit secondary" id="btnCancelarCategoria" style="display:none;" onclick="cancelarEdicaoCategoria()">Cancelar Edição</button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="table-responsive category-table">
+                <table id="tabelaCategorias">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Categoria</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="estoque" class="tab-content">
+            <div class="filter-wrapper">
+                <div class="filter-group">
+                    <label>Pesquisa Geral</label>
+                    <input type="text" id="searchEstoque" class="form-control" placeholder="Buscar por código ou nome..." oninput="filtrarEstoque()">
+                </div>
+                <div class="filter-group">
+                    <label>Filtrar por Categoria</label>
+                    <select id="filterCategoria" class="form-control" onchange="filtrarEstoque()">
+                        <option value="">Todas as Categorias</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Status de Nível</label>
+                    <select id="filterStatus" class="form-control" onchange="filtrarEstoque()">
+                        <option value="">Todos os Status</option>
+                        <option value="Estável">Estável</option>
+                        <option value="Crítico">Crítico (Abaixo do Mínimo)</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Situação</label>
+                    <select id="filterAtivo" class="form-control" onchange="filtrarEstoque()">
+                        <option value="active">Ativos</option>
+                        <option value="inactive">Inativos</option>
+                        <option value="">Todos</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Exportar</label>
+                    <button id="exportCsvBtn" class="btn-submit" style="padding:0.5rem 1rem;">Exportar CSV</button>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table id="tabelaEstoque">
+                    <thead>
+                        <tr>
+                            <th>Cód. QR</th>
+                            <th>Produto</th>
+                            <th>Categoria</th>
+                            <th>Qtd Disponível</th>
+                            <th>Preço Unitário</th>
+                            <th>Status de Nível</th>
+                            <th>Situação</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                </table>
+                <div id="paginationEstoque" class="pagination-controls"></div>
+            </div>
+        </div>
+
+        <div id="movimentacao" class="tab-content">
+            <div class="form-layout">
+                <div class="form-row">
+                    <label>Buscar Produto</label>
+                    <input type="text" id="movProductSearch" class="form-control" placeholder="Buscar por nome, ID ou código QR...">
+                </div>
+                <div class="form-row">
+                    <label>Selecionar Produto</label>
+                    <select id="movProductSelect" class="form-control"></select>
+                </div>
+                <div class="movement-product-panel" id="movementProductPanel">
+                    <div>
+                        <span>Categoria</span>
+                        <strong id="movProductCategory">—</strong>
+                    </div>
+                    <div>
+                        <span>Estoque Atual</span>
+                        <strong id="movProductQuantity">—</strong>
+                    </div>
+                    <div>
+                        <span>Nível Crítico</span>
+                        <strong id="movProductMinQuantity">—</strong>
+                    </div>
+                    <div>
+                        <span>Status</span>
+                        <strong id="movProductStatus">—</strong>
+                    </div>
+                    <div>
+                        <span>Preço Unitário</span>
+                        <strong id="movProductPrice">—</strong>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <label>Tipo de Operação</label>
+                    <select id="movTypeSelect" class="form-control">
+                        <option value="Entrada">Entrada (Compra / Reposição)</option>
+                        <option value="Saida">Saída (Venda / Baixa)</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label>Quantidade Solicitada</label>
+                    <input type="number" id="movQtyInput" class="form-control" value="1" min="1">
+                </div>
+                <div class="movement-warning" id="movementWarning" style="display:none;"></div>
+                <button type="button" id="movSubmitBtn" class="btn-submit">Salvar Movimentação</button>
+                
+                <div class="qr-simulation-box">
+                    [Simulador Integrado de Leitor de Código QR / Câmera Ativa]
+                </div>
+            </div>
+        </div>
+
+        <div id="historico" class="tab-content">
+            <div class="filter-wrapper">
+                <div class="filter-group">
+                    <label>Filtrar por Produto</label>
+                    <input type="text" id="searchHistorico" class="form-control" placeholder="Filtrar por nome de produto..." oninput="filtrarHistorico()">
+                </div>
+                <div class="filter-group">
+                    <label>Tipo de Transação</label>
+                    <select id="filterTipoTransacao" class="form-control" onchange="filtrarHistorico()">
+                        <option value="">Todas</option>
+                        <option value="Entrada">Entrada</option>
+                        <option value="Saida">Saída</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Operador</label>
+                    <input type="text" id="filterOperadorHistorico" class="form-control" placeholder="Nome do operador..." oninput="filtrarHistorico()">
+                </div>
+                <div class="filter-group">
+                    <label>Data da Movimentação</label>
+                    <input type="date" id="filterDataMovimentacaoHistorico" class="form-control" onchange="filtrarHistorico()">
+                </div>
+                <div class="filter-group">
+                    <label>Ações</label>
+                    <div class="filter-actions">
+                        <button type="button" class="btn-submit secondary" onclick="limparFiltrosHistorico()">Limpar</button>
+                        <button type="button" id="exportHistoryCsvBtn" class="btn-submit">Exportar CSV</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="history-summary-grid">
+                <div class="summary-card">
+                    <span>Total de Movimentações</span>
+                    <strong id="historySummaryTotal">—</strong>
+                </div>
+                <div class="summary-card success">
+                    <span>Total de Entradas</span>
+                    <strong id="historySummaryIn">—</strong>
+                </div>
+                <div class="summary-card danger">
+                    <span>Total de Saídas</span>
+                    <strong id="historySummaryOut">—</strong>
+                </div>
+                <div class="summary-card">
+                    <span>Saldo de Movimentações</span>
+                    <strong id="historySummaryNet">—</strong>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table id="tabelaHistorico">
+                    <thead>
+                        <tr>
+                            <th>Data / Hora</th>
+                            <th>Produto</th>
+                            <th>Tipo</th>
+                            <th>Quantidade</th>
+                            <th>Operador Responsável</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                </table>
+                <div id="paginationHistorico" class="pagination-controls"></div>
+            </div>
+        </div>
+
+        <div id="ia-preditiva" class="tab-content">
+            <div class="filter-wrapper">
+                <div class="filter-group">
+                    <label>Prever Próximos</label>
+                    <select id="iaHorizonSelect" class="form-control">
+                        <option value="7">7 dias</option>
+                        <option value="15" selected>15 dias</option>
+                        <option value="30">30 dias</option>
+                    </select>
+                </div>
+                <div class="filter-group admin-only">
+                    <label>Produto para Simulação</label>
+                    <select id="iaSeedProductSelect" class="form-control"></select>
+                </div>
+                <div class="filter-group admin-only">
+                    <label>Média de Saídas/Dia</label>
+                    <input type="number" id="iaSeedAverageOutflow" class="form-control" value="2" min="1">
+                </div>
+                <div class="filter-group admin-only ia-seed-action">
+                    <label></label>
+                    <button type="button" id="iaSeedHistoryBtn" class="btn-submit">Simular Saídas</button>
+                </div>
+            </div>
+
+            <div class="history-summary-grid">
+                <div class="summary-card">
+                    <span>Produtos Analisados</span>
+                    <strong id="iaSummaryProducts">—</strong>
+                </div>
+                <div class="summary-card danger">
+                    <span>Produtos Críticos</span>
+                    <strong id="iaSummaryCritical">—</strong>
+                </div>
+                <div class="summary-card success">
+                    <span>Compra Recomendada</span>
+                    <strong id="iaSummaryRecommended">—</strong>
+                </div>
+                <div class="summary-card">
+                    <span>Baixa Confiança</span>
+                    <strong id="iaSummaryLowConfidence">—</strong>
+                </div>
+            </div>
+
+            <div class="ai-grid">
+                
+                <div>
+                    <div class="ai-panel">
+                        <div class="panel-header">
+                            <div class="panel-title">Projeção de Demanda Estimada</div>
+                            <span class="badge bg-primary">Algoritmo: ML.NET FastTree</span>
+                        </div>
+                        <p class="ai-helper-text">Volume de saídas previsto conforme o horizonte selecionado e o histórico de movimentações.</p>
+                        
+                        <div class="chart-bar-group" id="ia-charts">
+                            <!-- preenchido por JS -->
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table id="iaPredictionTable">
+                            <thead>
+                                <tr>
+                                    <th>Produto</th>
+                                    <th>Estoque</th>
+                                    <th>Mínimo</th>
+                                    <th>Saída Prevista/dia</th>
+                                    <th>Histórico</th>
+                                    <th>Confiança</th>
+                                    <th>Comprar</th>
+                                    <th>Método</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+
+                    <div class="ai-panel">
+                        <div class="panel-header">
+                            <div class="panel-title">Relatório Interpretativo de Tendências</div>
+                        </div>
+                        <p id="ia-report" class="ai-report-text"></p>
+                    </div>
+                </div>
+
+                <div>
+                    <div class="ai-panel">
+                        <div class="panel-header">
+                            <div class="panel-title">Saúde do Modelo</div>
+                        </div>
+                        <div style="text-align: center; padding: 1rem 0;">
+                            <div id="ia-health" style="font-size: 2.5rem; font-weight: 700; color: var(--success)">—</div>
+                            <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.25rem;">Acurácia da Previsão (R-Squared)</p>
+                        </div>
+                    </div>
+
+                    <div class="ai-panel">
+                        <div class="panel-header">
+                            <div class="panel-title">Ordens de Compra Recomendadas</div>
+                        </div>
+                        <ul id="ia-orders" style="list-style: none; display: flex; flex-direction: column; gap: 0.75rem; font-size: 0.875rem;">
+                        </ul>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+    <div id="qrModal" class="modal-overlay" aria-hidden="true">
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="qrModalTitle">
+            <div class="modal-header">
+                <div>
+                    <h2 id="qrModalTitle">QR Code do Produto</h2>
+                    <p id="qrModalProductName"></p>
+                </div>
+                <button type="button" class="btn-icon" onclick="fecharModalQRCode()" aria-label="Fechar modal">×</button>
+            </div>
+            <div class="qr-preview modal-qr-preview">
+                <div id="qrModalDisplay"></div>
+                <strong id="qrModalCode"></strong>
+            </div>
+            <p class="qr-link-note" id="qrModalLink"></p>
+        </div>
+    </div>
+
+    <div id="produtoQrModal" class="modal-overlay" aria-hidden="true">
+        <div class="modal-card product-modal-card" role="dialog" aria-modal="true" aria-labelledby="produtoQrModalTitle">
+            <div class="modal-header">
+                <div>
+                    <h2 id="produtoQrModalTitle">Produto Encontrado</h2>
+                    <p id="produtoQrModalCode"></p>
+                </div>
+                <button type="button" class="btn-icon" onclick="fecharProdutoQRCode()" aria-label="Fechar modal">×</button>
+            </div>
+            <div class="product-detail-grid">
+                <div>
+                    <span>Produto</span>
+                    <strong id="produtoQrNome"></strong>
+                </div>
+                <div>
+                    <span>Categoria</span>
+                    <strong id="produtoQrCategoria"></strong>
+                </div>
+                <div>
+                    <span>Quantidade</span>
+                    <strong id="produtoQrQuantidade"></strong>
+                </div>
+                <div>
+                    <span>Nível crítico</span>
+                    <strong id="produtoQrMinimo"></strong>
+                </div>
+                <div>
+                    <span>Preço unitário</span>
+                    <strong id="produtoQrPreco"></strong>
+                </div>
+                <div>
+                    <span>Status</span>
+                    <strong id="produtoQrStatus"></strong>
+                </div>
+            </div>
+            <div class="form-actions modal-actions">
+                <button type="button" class="btn-submit" onclick="editarProdutoDoQr()">Editar Produto</button>
+                <button type="button" class="btn-submit secondary" onclick="abrirMovimentacaoProdutoQr()">Registrar Movimentação</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

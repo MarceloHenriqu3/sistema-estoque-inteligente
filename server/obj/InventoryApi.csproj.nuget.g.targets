@@ -1,0 +1,16 @@
+﻿<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<Project ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ImportGroup Condition=" '$(ExcludeRestorePackageImports)' != 'true' ">
+    <Import Project="$(NuGetPackageRoot)system.threading.channels\9.0.4\buildTransitive\netcoreapp2.0\System.Threading.Channels.targets" Condition="Exists('$(NuGetPackageRoot)system.threading.channels\9.0.4\buildTransitive\netcoreapp2.0\System.Threading.Channels.targets')" />
+    <Import Project="$(NuGetPackageRoot)system.text.json\7.0.0\buildTransitive\net6.0\System.Text.Json.targets" Condition="Exists('$(NuGetPackageRoot)system.text.json\7.0.0\buildTransitive\net6.0\System.Text.Json.targets')" />
+    <Import Project="$(NuGetPackageRoot)microsoft.bcl.numerics\9.0.4\buildTransitive\netcoreapp2.0\Microsoft.Bcl.Numerics.targets" Condition="Exists('$(NuGetPackageRoot)microsoft.bcl.numerics\9.0.4\buildTransitive\netcoreapp2.0\Microsoft.Bcl.Numerics.targets')" />
+    <Import Project="$(NuGetPackageRoot)system.numerics.tensors\9.0.4\buildTransitive\netcoreapp2.0\System.Numerics.Tensors.targets" Condition="Exists('$(NuGetPackageRoot)system.numerics.tensors\9.0.4\buildTransitive\netcoreapp2.0\System.Numerics.Tensors.targets')" />
+    <Import Project="$(NuGetPackageRoot)system.collections.immutable\9.0.4\buildTransitive\netcoreapp2.0\System.Collections.Immutable.targets" Condition="Exists('$(NuGetPackageRoot)system.collections.immutable\9.0.4\buildTransitive\netcoreapp2.0\System.Collections.Immutable.targets')" />
+    <Import Project="$(NuGetPackageRoot)system.codedom\9.0.4\buildTransitive\netcoreapp2.0\System.CodeDom.targets" Condition="Exists('$(NuGetPackageRoot)system.codedom\9.0.4\buildTransitive\netcoreapp2.0\System.CodeDom.targets')" />
+    <Import Project="$(NuGetPackageRoot)microsoft.extensions.apidescription.server\6.0.5\build\Microsoft.Extensions.ApiDescription.Server.targets" Condition="Exists('$(NuGetPackageRoot)microsoft.extensions.apidescription.server\6.0.5\build\Microsoft.Extensions.ApiDescription.Server.targets')" />
+    <Import Project="$(NuGetPackageRoot)sqlitepclraw.lib.e_sqlite3\2.1.2\buildTransitive\net7.0\SQLitePCLRaw.lib.e_sqlite3.targets" Condition="Exists('$(NuGetPackageRoot)sqlitepclraw.lib.e_sqlite3\2.1.2\buildTransitive\net7.0\SQLitePCLRaw.lib.e_sqlite3.targets')" />
+    <Import Project="$(NuGetPackageRoot)microsoft.bcl.asyncinterfaces\9.0.4\buildTransitive\netcoreapp2.0\Microsoft.Bcl.AsyncInterfaces.targets" Condition="Exists('$(NuGetPackageRoot)microsoft.bcl.asyncinterfaces\9.0.4\buildTransitive\netcoreapp2.0\Microsoft.Bcl.AsyncInterfaces.targets')" />
+    <Import Project="$(NuGetPackageRoot)microsoft.ml\6.0.0-preview.26160.2\build\netstandard2.0\Microsoft.ML.targets" Condition="Exists('$(NuGetPackageRoot)microsoft.ml\6.0.0-preview.26160.2\build\netstandard2.0\Microsoft.ML.targets')" />
+    <Import Project="$(NuGetPackageRoot)microsoft.extensions.logging.abstractions\7.0.0\buildTransitive\net6.0\Microsoft.Extensions.Logging.Abstractions.targets" Condition="Exists('$(NuGetPackageRoot)microsoft.extensions.logging.abstractions\7.0.0\buildTransitive\net6.0\Microsoft.Extensions.Logging.Abstractions.targets')" />
+  </ImportGroup>
+</Project>

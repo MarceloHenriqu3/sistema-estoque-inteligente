@@ -1,0 +1,48 @@
+{
+  "info": {
+    "name": "Inventory TCC API",
+    "_postman_id": "00000000-0000-0000-0000-000000000000",
+    "description": "Coleção básica para testar a API do TCC",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Dashboard",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "http://localhost:5000/api/dashboard", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api","dashboard"] }
+      }
+    },
+    {
+      "name": "List Products",
+      "request": { "method": "GET", "header": [], "url": { "raw": "http://localhost:5000/api/products", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api","products"] } }
+    },
+    {
+      "name": "Create Product",
+      "request": {
+        "method": "POST",
+        "header": [{"key":"Content-Type","value":"application/json"}],
+        "body": {"mode":"raw","raw":"{\"name\":\"Exemplo Produto\",\"category\":\"Periféricos\",\"price\":249.9,\"quantity\":100,\"minQuantity\":20,\"isActive\":true}"},
+        "url": { "raw": "http://localhost:5000/api/products", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api","products"] }
+      }
+    },
+    {
+      "name": "List Movements",
+      "request": { "method": "GET", "header": [], "url": { "raw": "http://localhost:5000/api/movements", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api","movements"] } }
+    },
+    {
+      "name": "Create Movement",
+      "request": {
+        "method": "POST",
+        "header": [{"key":"Content-Type","value":"application/json"}],
+        "body": {"mode":"raw","raw":"{\"productId\":1,\"quantityChange\":-5}"},
+        "url": { "raw": "http://localhost:5000/api/movements", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api","movements"] }
+      }
+    },
+    {
+      "name": "AI Suggestions",
+      "request": { "method": "GET", "header": [], "url": { "raw": "http://localhost:5000/api/ai/suggestions", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api","ai","suggestions"] } }
+    }
+  ]
+}

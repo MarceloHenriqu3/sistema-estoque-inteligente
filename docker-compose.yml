@@ -1,0 +1,8 @@
+version: '3.4'
+services:
+  inventory:
+    build: ./server
+    ports:
+      - "5000:80"
+    volumes:
+      - ./server/inventory.db:/app/inventory.db
