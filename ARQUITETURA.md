@@ -17,6 +17,8 @@ O Sistema Estoque Inteligente é uma aplicação **full-stack** moderna com sepa
 │              server/Program.cs (Port 5000)              │
 │  ┌──────────────────────────────────────────────────┐  │
 │  │    Controllers / Endpoints (REST API)           │  │
+│  │  • POST /api/users/login                         │  │
+│  │  • GET/POST /api/users                           │  │
 │  │  • GET /api/dashboard                           │  │
 │  │  • GET/POST /api/products                       │  │
 │  │  • GET/POST /api/movements                      │  │
@@ -31,6 +33,8 @@ O Sistema Estoque Inteligente é uma aplicação **full-stack** moderna com sepa
 │  │      DbContext (InventoryDbContext)             │  │
 │  │   • Product (DbSet)                             │  │
 │  │   • Movement (DbSet)                            │  │
+│  │   • User (DbSet)                                │  │
+│  │   • ProductCategory (DbSet)                     │  │
 │  └──────────────────────────────────────────────────┘  │
 │                    ▲                                     │
 │                    │ SQLite Provider                    │
@@ -55,7 +59,7 @@ TCC/
 │   └── bin/                    # Build output (compilado)
 │
 ├── client/                      # Frontend Web
-│   ├── index.html              # UI principal (6 abas)
+│   ├── index.html              # UI principal (abas do sistema)
 │   ├── app.js                  # Lógica JavaScript (fetch APIs)
 │   ├── styles.css              # Estilos CSS (minificado)
 │   └── (servido por ASP.NET Core na rota raiz)
@@ -114,6 +118,31 @@ Product (1) ──── (∞) Movement
   Id              ProductId
 ```
 
+### Entidade: User
+```csharp
+class User {
+    int Id
+    string Username
+    string PasswordHash
+    string Name
+    string Role                 // Administrador ou Operador
+    bool IsActive
+    bool MustChangePassword
+}
+```
+
+Essa entidade controla autenticação, perfil de acesso e obrigatoriedade de troca de senha no primeiro acesso.
+
+### Entidade: ProductCategory
+```csharp
+class ProductCategory {
+    int Id
+    string Name
+}
+```
+
+As categorias são usadas no cadastro, filtros e relatórios de estoque.
+
 ---
 
 ## 🔌 Endpoints REST
@@ -128,7 +157,11 @@ GET /api/dashboard
   "totalProducts": 50,
   "critical": 5,
   "movementsToday": 12,
-  "aiSuggestionsCount": 5
+  "stockValue": 15420.50,
+  "inactiveProducts": 2,
+  "criticalProducts": [],
+  "latestMovements": [],
+  "criticalCategories": []
 }
 ```
 
@@ -140,7 +173,19 @@ POST /api/products
 GET /api/products/export?search=termo
 GET /api/products/{id}
 PUT /api/products/{id}
-DELETE /api/products/{id}
+PUT /api/products/{id}/active
+```
+
+### Usuários e Autenticação
+```http
+POST /api/users/login
+POST /api/users/register
+GET /api/users
+PUT /api/users/{id}
+PUT /api/users/{id}/status
+PUT /api/users/{id}/password
+PUT /api/users/{id}/change-password
+DELETE /api/users/{id}
 ```
 
 ### Movimentações
@@ -167,9 +212,13 @@ User abre http://localhost:5000
     ↓
 Frontend carrega index.html + app.js + styles.css
     ↓
-JavaScript inicializa (loadDashboard, loadProductsIntoTable, etc)
+Usuário faz login
     ↓
-fetch /api/dashboard, /api/products, /api/ai/suggestions
+Backend valida senha e retorna JWT
+    ↓
+JavaScript salva o token na sessão
+    ↓
+fetch autenticado para /api/dashboard, /api/products, /api/ai/suggestions
     ↓
 Backend consulta SQLite via EF Core
     ↓
@@ -197,13 +246,14 @@ JavaScript recarrega tabela (loadProductsIntoTable)
 ```
 User seleciona produto + tipo + quantidade
     ↓
-POST /api/movements { productId, type, quantityChange, operator }
+POST /api/movements { productId, quantityChange } com JWT
     ↓
 Backend:
   1. DbContext.Movements.Add(movement)
   2. product = DbContext.Products.Find(productId)
   3. product.Quantity += quantityChange
-  4. DbContext.SaveChanges()
+  4. Operator é extraído do token autenticado
+  5. DbContext.SaveChanges()
     ↓
 SQLite atualiza ambas tabelas (Movement + Product)
     ↓
@@ -235,6 +285,8 @@ Frontend renderiza nova página + atualiza controles
 | **Backend** | ASP.NET Core | net7.0 |
 | **ORM** | Entity Framework Core | 7.0.0 |
 | **Banco** | SQLite | 3 |
+| **Autenticação** | JWT Bearer | ASP.NET Core |
+| **IA** | ML.NET SDCA Regression | 6.0 preview |
 | **Container** | Docker | - |
 | **Runtime** | .NET 7 | - |
 
@@ -250,29 +302,47 @@ Frontend renderiza nova página + atualiza controles
 
 ### Limitações Atuais
 - SQLite para ≤ 100k registros (considerar PostgreSQL para escala)
-- Sem autenticação/autorização (ambiente de demonstração)
 - Sem criptografia de dados em repouso
 - Sem backup automático
+- Chave JWT padrão apenas para demonstração local
 
 ### Melhorias Futuras
 - Migrar para PostgreSQL + Elasticsearch
-- Implementar autenticação OAuth2
 - Adicionar cache distribuído (Redis)
 - Implementar logs centralizados (Serilog)
 - Adicionar monitoramento (Application Insights)
+- Usar HTTPS e segredo JWT externo em produção
 
 ---
 
 ## 🔒 Segurança
 
 ### Status Atual
-- ⚠️ Sem autenticação (endpoint aberto)
-- ⚠️ Sem validação de entrada robusta
+- ✅ Autenticação por JWT
+- ✅ Autorização por perfil: Administrador e Operador
+- ✅ Senhas armazenadas com hash PBKDF2 e salt
+- ✅ Troca obrigatória de senha inicial para operadores
 - ⚠️ Sem rate limiting
 - ✅ SQL Injection protegido (via EF Core parameterized queries)
 
+### Matriz de Permissões
+
+| Área | Administrador | Operador |
+|------|---------------|----------|
+| Login e troca da própria senha | Sim | Sim |
+| Dashboard | Sim | Sim |
+| Consulta de estoque | Sim | Sim |
+| Exportação CSV | Sim | Sim |
+| Cadastro/edição/desativação de produtos | Sim | Sim |
+| Cadastro/edição/exclusão de categorias | Sim | Sim |
+| Registro de movimentações | Sim | Sim |
+| Histórico e auditoria | Sim | Sim |
+| Análise preditiva | Sim | Sim |
+| Simulação de histórico para IA | Sim | Não |
+| Gerenciamento de usuários | Sim | Não |
+
 ### Recomendações de Produção
-1. Implementar JWT ou OAuth2
+1. Definir `INVENTORY_JWT_SECRET` por variável de ambiente
 2. Adicionar validação com FluentValidation
 3. Implementar Rate Limiting
 4. Usar HTTPS (SSL/TLS)
@@ -308,16 +378,21 @@ public async Task GetProducts_WithPagination_ReturnsPagedResult()
 ### Sugestões de Compra
 ```
 Para cada produto P:
-    Se P.Quantity < P.MinQuantity:
-        suggestedPurchase = P.MinQuantity - P.Quantity
+    Se P estiver ativo e P.Quantity <= P.MinQuantity:
+        suggestedPurchase = max(0, P.MinQuantity * 2 - P.Quantity)
 ```
 
-### Previsão de 30 Dias
+### Previsão de Demanda
 ```
-outflows = Movimentos de saída dos últimos 30 dias
-dailyAverage = outflows.Sum() / 30
-recommendedOrder = dailyAverage * 30  // Estocar para 30 dias
+1. O sistema agrupa movimentações de saída por dia.
+2. Se há pouco histórico, usa média histórica simples.
+3. Com histórico suficiente, treina uma regressão ML.NET SDCA.
+4. A previsão calcula saída diária estimada.
+5. A recomendação de compra considera:
+   predictedDailyOutflow * horizonte + nível mínimo - estoque atual.
 ```
+
+O objetivo da IA no TCC é apoiar a decisão de reposição, não substituir o gestor. Por isso a tela exibe método usado, confiança e quantidade recomendada.
 
 ---
 

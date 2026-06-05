@@ -1,63 +1,116 @@
-Testes rápidos com curl para a API (assumindo `http://localhost:5000`)
+# Testes rápidos com curl
 
-1) Dashboard
+Base usada nos exemplos:
 
 ```bash
-curl http://localhost:5000/api/dashboard
+BASE_URL=http://localhost:5000
 ```
 
-2) Listar produtos
+No PowerShell, use:
 
-```bash
-curl "http://localhost:5000/api/products?page=1&pageSize=20&search=Parafuso"
+```powershell
+$BASE_URL = "http://localhost:5000"
 ```
 
-3) Criar produto
+## 1. Login e captura do token
+
+### Bash
+```bash
+TOKEN=$(curl -s -X POST "$BASE_URL/api/users/login" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}' | jq -r .token)
+```
+
+### PowerShell
+```powershell
+$login = Invoke-RestMethod -Uri "$BASE_URL/api/users/login" `
+  -Method Post `
+  -ContentType "application/json" `
+  -Body '{"username":"admin","password":"admin123"}'
+
+$TOKEN = $login.token
+```
+
+Todas as próximas chamadas protegidas usam:
 
 ```bash
-curl -X POST http://localhost:5000/api/products \
+-H "Authorization: Bearer $TOKEN"
+```
+
+## 2. Dashboard
+
+```bash
+curl "$BASE_URL/api/dashboard" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+## 3. Listar produtos
+
+```bash
+curl "$BASE_URL/api/products?page=1&pageSize=20&search=Parafuso" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+## 4. Criar produto
+
+```bash
+curl -X POST "$BASE_URL/api/products" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"name":"Exemplo Produto","category":"Periféricos","price":249.9,"quantity":100,"minQuantity":20,"isActive":true}'
 ```
 
-4) Listar movimentações
+## 5. Registrar movimentação
+
+Quantidade positiva representa entrada. Quantidade negativa representa saída.
 
 ```bash
-curl "http://localhost:5000/api/movements?page=1&pageSize=20&productId=1&from=2026-05-25&to=2026-06-01"
-```
-
-5) Registrar movimentação (neg = saída, pos = entrada)
-
-```bash
-curl -X POST http://localhost:5000/api/movements \
+curl -X POST "$BASE_URL/api/movements" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"productId":1,"quantityChange":-5}'
 ```
 
-6) Histórico detalhado de um produto
+O operador é identificado pelo token JWT, não pelo corpo da requisição.
+
+## 6. Histórico detalhado de um produto
 
 ```bash
-curl http://localhost:5000/api/history/1
+curl "$BASE_URL/api/history/1" \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
-7) Sugestões de compra (IA stub)
+## 7. Sugestões de compra
 
 ```bash
-curl http://localhost:5000/api/ai/suggestions
+curl "$BASE_URL/api/ai/suggestions" \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
-9) Exportar produtos em CSV
+## 8. Previsão para um produto
 
 ```bash
-curl -o produtos.csv "http://localhost:5000/api/products/export?search=Parafuso"
+curl "$BASE_URL/api/ai/predict/1?days=15" \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
-8) Previsão simples para um produto
+## 9. Exportar produtos em CSV
 
 ```bash
-curl http://localhost:5000/api/ai/predict/1
+curl -o produtos.csv "$BASE_URL/api/products/export?search=Parafuso" \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
-Observações:
-- Substitua `localhost:5000` pelo host/porta que estiver usando (no Docker mapeei para 5000:80).
-- Use `jq` para formatar JSON nas saídas: `curl ... | jq`.
+## 10. Testar proteção de rota
+
+Sem token, uma rota protegida deve retornar `401 Unauthorized`:
+
+```bash
+curl -i "$BASE_URL/api/dashboard"
+```
+
+## Observações
+
+- Substitua `localhost:5000` pela porta usada no `dotnet run`.
+- Use `jq` para formatar JSON no Bash.
+- No PowerShell, `Invoke-RestMethod` já converte JSON em objeto.

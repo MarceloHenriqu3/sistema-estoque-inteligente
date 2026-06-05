@@ -13,6 +13,12 @@ Bem-vindo! Este arquivo ajuda você a navegar por toda a documentação do proje
   - Dicas de uso
   - Troubleshooting básico
 
+### 🎓 Você vai **Apresentar o TCC**?
+- Leia: [**APRESENTACAO_TCC.md**](APRESENTACAO_TCC.md)
+  - Roteiro de fala
+  - Fluxo sugerido de demonstração
+  - Explicação de segurança, IA e histórico
+
 ### 👨‍💻 Você é um **Desenvolvedor**?
 - Leia: [**GUIA_DESENVOLVIMENTO.md**](GUIA_DESENVOLVIMENTO.md)
   - Setup local
@@ -41,6 +47,7 @@ Bem-vindo! Este arquivo ajuda você a navegar por toda a documentação do proje
 ```
 TCC/
 ├── 📖 DOCUMENTACAO_INDEX.md          ← Você está aqui!
+├── 🎓 APRESENTACAO_TCC.md            Roteiro para defesa/apresentação
 ├── 📘 GUIA_USUARIO.md                Manual para usuários finais
 ├── 🛠️  GUIA_DESENVOLVIMENTO.md        Guia para desenvolvedores
 ├── 🏗️  ARQUITETURA.md                 Documentação técnica
@@ -56,7 +63,7 @@ TCC/
 │   └── inventory.db                  SQLite database (criado em runtime)
 │
 ├── client/                            Frontend Web
-│   ├── index.html                    Interface (6 abas)
+│   ├── index.html                    Interface principal do sistema
 │   ├── app.js                        Lógica JavaScript
 │   └── styles.css                    Estilos CSS
 │
@@ -77,7 +84,7 @@ TCC/
 ### Uso da Aplicação
 | Documento | Seção | Descrição |
 |-----------|-------|-----------|
-| GUIA_USUARIO.md | Interface Principal | Navegação pelos 6 abas |
+| GUIA_USUARIO.md | Interface Principal | Navegação pelas telas do sistema |
 | GUIA_USUARIO.md | Entendendo os Dados | Status, badges, níveis críticos |
 | GUIA_USUARIO.md | Exportar Dados | Como gerar CSV |
 
@@ -106,6 +113,17 @@ TCC/
 ---
 
 ## 🚀 Fluxos Comuns
+
+### Fluxo 0: Apresentar o Sistema no TCC
+```
+1. Explicar o problema: controle manual de estoque, baixa rastreabilidade e falta de previsão.
+2. Mostrar o login: autenticação JWT e perfis Administrador/Operador.
+3. Demonstrar cadastro: categoria, produto, nível crítico e QR Code.
+4. Registrar uma saída: estoque atualiza e histórico registra o operador.
+5. Abrir dashboard: KPIs mostram situação atual do estoque.
+6. Abrir IA preditiva: previsão de demanda e sugestão de compra.
+7. Concluir: o sistema une controle operacional, auditoria e apoio à decisão.
+```
 
 ### Fluxo 1: Executar a Aplicação
 ```

@@ -64,8 +64,8 @@ app.MapPost("/api/products", ...).Accepts<CreateProductDto>();
 ```
 
 **Estrutura:**
-1. **Configuração** (DbContext, CORS, etc)
-2. **Modelos** (class Product, Movement)
+1. **Configuração** (DbContext, CORS, JWT, Authorization e Swagger)
+2. **Modelos** (class Product, Movement, User e ProductCategory)
 3. **DTOs** (Data Transfer Objects)
 4. **Seed Data** (dados iniciais)
 5. **Endpoints** (GET, POST, PUT, DELETE)
@@ -79,7 +79,9 @@ app.MapPost("/api/products", ...).Accepts<CreateProductDto>();
     <TargetFramework>net7.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="7.0.20" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="7.0.0" />
+    <PackageReference Include="Microsoft.ML" Version="6.0.0-preview.26160.2" />
     <!-- Adicione novos pacotes NuGet aqui -->
   </ItemGroup>
 </Project>
@@ -201,19 +203,20 @@ app.MapGet("/api/products/{id}/stock-report", async (int id, InventoryDbContext 
     };
     
     return Results.Ok(report);
-});
+}).RequireAuthorization("PasswordReady");
 ```
 
 #### Passo 3: Testar com Postman ou curl
 ```bash
-curl http://localhost:5000/api/products/1/stock-report
+curl http://localhost:5000/api/products/1/stock-report \
+  -H "Authorization: Bearer SEU_TOKEN_AQUI"
 ```
 
 #### Passo 4: Conectar ao Frontend
 ```javascript
 // Em app.js
 async function loadStockReport(productId) {
-    const res = await fetch(`/api/products/${productId}/stock-report`);
+    const res = await authFetch(`/api/products/${productId}/stock-report`);
     const report = await res.json();
     console.log('Stock Report:', report);
 }
@@ -435,24 +438,45 @@ async function loadDashboard() {
 ### Teste Manual com curl
 
 ```bash
+# Login
+TOKEN=$(curl -s -X POST http://localhost:5000/api/users/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}' | jq -r .token)
+
 # Dashboard
-curl http://localhost:5000/api/dashboard
+curl http://localhost:5000/api/dashboard \
+  -H "Authorization: Bearer $TOKEN"
 
 # Produtos (primeira página)
-curl "http://localhost:5000/api/products?page=1&pageSize=5"
+curl "http://localhost:5000/api/products?page=1&pageSize=5" \
+  -H "Authorization: Bearer $TOKEN"
 
 # Criar produto
 curl -X POST http://localhost:5000/api/products \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"name":"Test","category":"Test","price":100,"quantity":10,"minQuantity":2}'
 
 # Movimentação
 curl -X POST http://localhost:5000/api/movements \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"productId":1,"type":"OUT","quantityChange":2,"operator":"Test"}'
+  -d '{"productId":1,"quantityChange":-2}'
 ```
 
 ### Teste Automatizado (Recomendado)
+
+O projeto possui testes básicos de integração em `server.Tests`.
+
+```bash
+dotnet test server.Tests/InventoryApi.Tests.csproj
+```
+
+Esses testes validam:
+- rota protegida sem token retorna `401`;
+- login do admin retorna token e libera dashboard;
+- operador consegue cadastrar categoria/produto, mas não gerenciar usuários;
+- saída maior que o estoque disponível retorna erro.
 
 ```csharp
 // File: server/InventoryApi.Tests.cs
@@ -529,20 +553,23 @@ dotnet InventoryApi.dll
 ## 🔒 Segurança para Produção
 
 ### Checklist
-- [ ] Implementar autenticação (JWT, OAuth2)
+- [x] Implementar autenticação JWT
+- [x] Proteger rotas por perfil de usuário
+- [x] Armazenar senhas com hash e salt
+- [x] Exigir troca de senha inicial para operadores
 - [ ] Ativar HTTPS (SSL/TLS)
 - [ ] Configurar CORS com domínios específicos
 - [ ] Validar e sanitizar entrada do usuário
-- [ ] Usar variáveis de ambiente para secrets
+- [x] Exigir `INVENTORY_JWT_SECRET` em produção
 - [ ] Implementar rate limiting
-- [ ] Adicionar logs de auditoria
+- [x] Adicionar logs de auditoria
+- [x] Adicionar backup SQLite e exportação JSON completa
 - [ ] Realizar SQL injection testing
 - [ ] Testar segurança com OWASP ZAP
 
-### Exemplo: Autenticação JWT
+### Autenticação JWT no Projeto
 
 ```csharp
-// Adicionar autenticação
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options => {
         options.TokenValidationParameters = new TokenValidationParameters {
@@ -554,10 +581,11 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-// Proteger endpoint
 app.MapGet("/api/admin/summary", AdminSummary)
-    .RequireAuthorization();
+    .RequireAuthorization("Admin");
 ```
+
+No frontend, use `authFetch` ou `fetchJson`, pois essas funções adicionam automaticamente o header `Authorization: Bearer ...`.
 
 ---
 

@@ -8,6 +8,7 @@ let selectedQrProductId = null;
 let publicAppBaseUrl = '';
 let productCategories = [];
 let systemUsers = [];
+let auditLogs = [];
 let selectedAdminUserId = null;
 let movementProducts = [];
 const API_BASE_URL = window.location.protocol === 'file:' ? 'http://localhost:5123' : '';
@@ -53,6 +54,14 @@ function getProductIdFromUrl() {
   return Number.isInteger(productId) && productId > 0 ? productId : null;
 }
 
+function clearProductIdFromUrl() {
+  if (!window.history?.replaceState || window.location.protocol === 'file:') return;
+
+  const url = new URL(window.location.href);
+  ['produto', 'productId', 'id'].forEach(param => url.searchParams.delete(param));
+  window.history.replaceState({}, document.title, url.toString());
+}
+
 function escapeHtml(value) {
   return (value ?? '').toString().replace(/[&<>"']/g, (char) => ({
     '&': '&amp;',
@@ -72,6 +81,14 @@ function parseUtcDate(value) {
 
 function isAdminUser() {
   return currentUser?.role?.toString().toLowerCase() === 'administrador';
+}
+
+function userMustChangePassword() {
+  return Boolean(currentUser?.mustChangePassword || currentUser?.MustChangePassword);
+}
+
+function isAdminTab(tabId) {
+  return ['register', 'usuarios'].includes(tabId);
 }
 
 function saveCurrentUserSession() {
@@ -111,10 +128,10 @@ function updateNavVisibility() {
     const tabId = match ? match[1] : '';
     if (tabId === 'login') {
       btn.style.display = currentUser ? 'none' : 'flex';
-    } else if (tabId === 'register' || tabId === 'usuarios') {
-      btn.style.display = isAdminUser() ? 'flex' : 'none';
+    } else if (isAdminTab(tabId)) {
+      btn.style.display = isAdminUser() && !userMustChangePassword() ? 'flex' : 'none';
     } else {
-      btn.style.display = currentUser ? 'flex' : 'none';
+      btn.style.display = currentUser && !userMustChangePassword() ? 'flex' : 'none';
     }
   });
   const logoutButton = document.getElementById('navLogout');
@@ -134,21 +151,47 @@ function logout() {
 }
 
 async function fetchJson(url, opts) {
-  const res = await fetch(apiUrl(url), opts);
+  const res = await authFetch(url, opts);
+  if (res.status === 401) {
+    if (currentUser) {
+      currentUser = null;
+      clearCurrentUserSession();
+      updateAdminNav();
+      updateNavVisibility();
+      switchTab('login');
+    }
+    throw new Error('Sessão expirada. Faça login novamente.');
+  }
+  if (res.status === 403) {
+    throw new Error('Seu perfil não tem permissão para acessar este recurso.');
+  }
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
+function getAuthHeaders(extra = {}) {
+  const headers = { ...extra };
+  const token = currentUser?.token || currentUser?.Token;
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  return headers;
+}
+
+function authFetch(url, opts = {}) {
+  const requestUrl = url.startsWith('http') ? url : apiUrl(url);
+  return fetch(requestUrl, {
+    ...opts,
+    headers: getAuthHeaders(opts.headers || {})
+  });
+}
+
 function adminHeaders(extra = {}) {
-  return {
-    'X-User-Role': currentUser?.role || '',
-    'X-User-Id': currentUser?.id?.toString() || '',
-    ...extra
-  };
+  return getAuthHeaders(extra);
 }
 
 async function safeFetchText(url) {
-  const res = await fetch(apiUrl(url));
+  const res = await authFetch(url);
   if (!res.ok) return null;
   return res.text();
 }
@@ -263,14 +306,18 @@ function renderCategoryOptions() {
 
   if (productCategorySelect) {
     productCategorySelect.innerHTML = '';
-    productCategories.forEach(category => {
+    const productCategoryOptions = productCategories.filter(category =>
+      category.isActive || category.name === currentProductCategory
+    );
+
+    productCategoryOptions.forEach(category => {
       const opt = document.createElement('option');
       opt.value = category.name;
-      opt.textContent = category.name;
+      opt.textContent = category.isActive ? category.name : `${category.name} (inativa)`;
       productCategorySelect.appendChild(opt);
     });
 
-    if (productCategories.some(category => category.name === currentProductCategory)) {
+    if (productCategoryOptions.some(category => category.name === currentProductCategory)) {
       productCategorySelect.value = currentProductCategory;
     }
   }
@@ -297,12 +344,15 @@ function renderCategoriesTable() {
   tbody.innerHTML = '';
   productCategories.forEach(category => {
     const tr = document.createElement('tr');
+    const isActive = category.isActive !== false;
     tr.innerHTML = `
       <td>${category.id}</td>
       <td>${escapeHtml(category.name)}</td>
+      <td><span class="badge ${isActive ? 'bg-success' : 'bg-muted'}">${isActive ? 'Ativa' : 'Inativa'}</span></td>
       <td>
         <div class="table-actions">
           <button type="button" class="btn-table-action primary" onclick="editarCategoria(${category.id})">Editar</button>
+          <button type="button" class="btn-table-action ${isActive ? 'danger' : 'success'}" onclick="alterarStatusCategoria(${category.id}, ${!isActive})">${isActive ? 'Desativar' : 'Ativar'}</button>
           <button type="button" class="btn-table-action danger" onclick="excluirCategoria(${category.id})">Excluir</button>
         </div>
       </td>
@@ -311,7 +361,7 @@ function renderCategoriesTable() {
   });
 
   if (!productCategories.length) {
-    tbody.innerHTML = '<tr><td colspan="3">Nenhuma categoria cadastrada.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4">Nenhuma categoria cadastrada.</td></tr>';
   }
 }
 
@@ -373,10 +423,33 @@ function renderUserProfile() {
   }
 }
 
+async function continueAfterPasswordReady() {
+  await loadAuthenticatedData();
+  if (pendingQrProductId) {
+    const productId = pendingQrProductId;
+    pendingQrProductId = null;
+    clearProductIdFromUrl();
+    await abrirProdutoPorQRCode(productId);
+  } else {
+    switchTab('dashboard');
+  }
+}
+
+async function loadAuthenticatedData() {
+  if (!currentUser || userMustChangePassword()) return;
+  await Promise.all([
+    loadCategories(),
+    loadDashboard(),
+    loadProductsIntoTable(),
+    loadMovementsIntoHistory(),
+    loadAISuggestions()
+  ]);
+}
+
 async function loadProductsIntoTable() {
   try {
     const query = getProductFilterParams();
-    const res = await fetch(apiUrl(`/api/products?${query}`));
+    const res = await authFetch(`/api/products?${query}`);
     const data = await res.json();
     const products = data.items || data;
     productsPaginationState.total = data.total || products.length || 0;
@@ -463,6 +536,27 @@ function renderMovementProductOptions() {
       select.appendChild(opt);
     }
     updateMovementProductPanel();
+}
+
+async function selectMovementProductById(productId) {
+  if (!movementProducts.some(product => product.id === productId)) {
+    await loadProductsIntoMovementSelect();
+  }
+
+  const search = document.getElementById('movProductSearch');
+  const select = document.getElementById('movProductSelect');
+  if (search) {
+    search.value = '';
+    renderMovementProductOptions();
+  }
+
+  if (select && Array.from(select.options).some(option => option.value === productId.toString())) {
+    select.value = productId.toString();
+    updateMovementProductPanel();
+    return true;
+  }
+
+  return false;
 }
 
 function getSelectedMovementProductData() {
@@ -590,7 +684,7 @@ async function loadMovementsIntoHistory() {
   try {
     await loadMovementSummary();
     const query = getMovementFilterParams();
-    const res = await fetch(apiUrl(`/api/movements?${query}`));
+    const res = await authFetch(`/api/movements?${query}`);
     const data = await res.json();
     const items = data.items || data;
     movementsPaginationState.total = data.total || 0;
@@ -709,7 +803,7 @@ async function loadAISuggestions() {
     document.getElementById('kpi-ai-suggestions').innerText = suggestions.length || 0;
 
     const horizonDays = parseInt(document.getElementById('iaHorizonSelect')?.value || '15', 10);
-    const productsRes = await fetch(apiUrl('/api/products?page=1&pageSize=1000&activeStatus=active'));
+    const productsRes = await authFetch('/api/products?page=1&pageSize=1000&activeStatus=active');
     const productsData = await productsRes.json();
     const products = productsData.items || productsData;
     renderAiSeedProductOptions(products);
@@ -914,12 +1008,14 @@ function renderUsersAdminTable() {
   systemUsers.forEach(user => {
     const tr = document.createElement('tr');
     const isSelected = selectedAdminUserId === user.id;
+    const statusClass = !user.isActive ? 'bg-muted' : (user.mustChangePassword ? 'bg-warning' : 'bg-success');
+    const statusText = user.isActive ? (user.mustChangePassword ? 'Troca pendente' : 'Ativo') : 'Inativo';
     tr.innerHTML = `
       <td>${user.id}</td>
       <td>${escapeHtml(user.username)}</td>
       <td>${escapeHtml(user.name || '-')}</td>
       <td>${escapeHtml(user.role || '-')}</td>
-      <td><span class="badge ${user.isActive ? 'bg-success' : 'bg-muted'}">${user.isActive ? 'Ativo' : 'Inativo'}</span></td>
+      <td><span class="badge ${statusClass}">${statusText}</span></td>
       <td>
         <div class="table-actions">
           <button type="button" class="btn-table-action ${isSelected ? '' : 'primary'}" onclick="${isSelected ? 'cancelarEdicaoUsuarioAdmin()' : `editarUsuarioAdmin(${user.id})`}">${isSelected ? 'Cancelar' : 'Selecionar'}</button>
@@ -1002,7 +1098,7 @@ async function excluirUsuarioAdmin(userId) {
   if (!confirm(`Deseja excluir permanentemente o usuário "${user.username}"?`)) return;
 
   try {
-    const res = await fetch(apiUrl(`/api/users/${userId}`), {
+    const res = await authFetch(`/api/users/${userId}`, {
       method: 'DELETE',
       headers: adminHeaders()
     });
@@ -1016,14 +1112,77 @@ async function excluirUsuarioAdmin(userId) {
   }
 }
 
+async function loadAuditLogs() {
+  if (!isAdminUser()) return;
+
+  try {
+    const data = await fetchJson('/api/audit-logs?page=1&pageSize=30');
+    auditLogs = data.items || [];
+    renderAuditLogsTable();
+  } catch (err) {
+    console.error('Failed to load audit logs', err);
+  }
+}
+
+function renderAuditLogsTable() {
+  const tbody = document.querySelector('#tabelaAuditoria tbody');
+  if (!tbody) return;
+
+  tbody.innerHTML = '';
+  auditLogs.forEach(log => {
+    const tr = document.createElement('tr');
+    const timestamp = parseUtcDate(log.timestamp);
+    tr.innerHTML = `
+      <td>${timestamp.toLocaleString()}</td>
+      <td>${escapeHtml(log.username || '-')}</td>
+      <td><span class="badge bg-primary">${escapeHtml(log.action || '-')}</span></td>
+      <td>${escapeHtml(log.entity || '-')}${log.entityId ? ` #${escapeHtml(log.entityId)}` : ''}</td>
+      <td>${escapeHtml(log.details || '-')}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  if (!auditLogs.length) {
+    tbody.innerHTML = '<tr><td colspan="5">Nenhum evento de auditoria registrado.</td></tr>';
+  }
+}
+
+async function downloadAuthenticatedFile(url, fallbackFileName) {
+  try {
+    const res = await authFetch(url);
+    if (!res.ok) throw new Error(await res.text());
+
+    const blob = await res.blob();
+    const contentDisposition = res.headers.get('content-disposition') || '';
+    const match = contentDisposition.match(/filename="?([^"]+)"?/i);
+    const fileName = match?.[1] || fallbackFileName;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    URL.revokeObjectURL(a.href);
+    a.remove();
+    showMessage('Download iniciado com sucesso.', 'success');
+    await loadAuditLogs();
+  } catch (err) {
+    showMessage('Erro ao baixar arquivo: ' + err.message, 'error');
+  }
+}
+
 function switchTab(tabId) {
   if (!currentUser && tabId !== 'login') {
     showMessage('Faça login para acessar o sistema.', 'error');
     return;
   }
 
-  if ((tabId === 'register' || tabId === 'usuarios') && !isAdminUser()) {
-    showMessage('Apenas administrador pode acessar usuários.', 'error');
+  if (currentUser && userMustChangePassword() && tabId !== 'change-password' && tabId !== 'login') {
+    tabId = 'change-password';
+    showMessage('Troque sua senha inicial para continuar.', 'error');
+  }
+
+  if (isAdminTab(tabId) && !isAdminUser()) {
+    showMessage('Apenas administrador pode acessar esta área.', 'error');
     return;
   }
 
@@ -1034,6 +1193,7 @@ function switchTab(tabId) {
   buttons.forEach(btn => { if(btn.getAttribute('onclick') && btn.getAttribute('onclick').includes(tabId)) btn.classList.add('active'); });
   const titles = {
     'login': 'Entrar no Sistema',
+    'change-password': 'Alterar Senha Inicial',
     'register': 'Criar Novo Usuário',
     'usuarios': 'Gerenciar Usuários',
     'dashboard': 'Dashboard Inicial',
@@ -1048,6 +1208,7 @@ function switchTab(tabId) {
 
   if (tabId === 'usuarios') {
     loadUsersAdmin();
+    loadAuditLogs();
   }
 }
 
@@ -1085,7 +1246,7 @@ async function excluirCategoria(categoriaId) {
   if (!confirm(`Excluir a categoria "${category.name}"?`)) return;
 
   try {
-    await fetch(apiUrl(`/api/categories/${categoriaId}`), { method: 'DELETE' }).then(async res => {
+    await authFetch(`/api/categories/${categoriaId}`, { method: 'DELETE' }).then(async res => {
       if (!res.ok) throw new Error(await res.text());
     });
     showMessage('Categoria excluída com sucesso.', 'success');
@@ -1093,6 +1254,27 @@ async function excluirCategoria(categoriaId) {
     await loadProductsIntoTable();
   } catch (err) {
     showMessage('Erro ao excluir categoria: ' + err.message, 'error');
+  }
+}
+
+async function alterarStatusCategoria(categoriaId, isActive) {
+  const category = productCategories.find(item => item.id === categoriaId);
+  if (!category) return;
+
+  const action = isActive ? 'ativar' : 'desativar';
+  if (!confirm(`Deseja ${action} a categoria "${category.name}"?`)) return;
+
+  try {
+    await fetchJson(`/api/categories/${categoriaId}/active`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isActive })
+    });
+    showMessage(`Categoria ${isActive ? 'ativada' : 'desativada'} com sucesso.`, 'success');
+    await loadCategories();
+    await loadProductsIntoTable();
+  } catch (err) {
+    showMessage(`Erro ao ${action} categoria: ` + err.message, 'error');
   }
 }
 
@@ -1141,7 +1323,7 @@ function atualizarModoFormularioProduto(produtoId = null) {
 
 async function editarProduto(produtoId) {
   try {
-    const res = await fetch(apiUrl(`/api/products/${produtoId}`));
+    const res = await authFetch(`/api/products/${produtoId}`);
     if (!res.ok) throw new Error('Produto não encontrado');
     const produto = await res.json();
     
@@ -1221,33 +1403,20 @@ async function abrirProdutoPorQRCode(produtoId) {
   if (!currentUser) {
     pendingQrProductId = produtoId;
     switchTab('login');
-    showMessage('Faça login para abrir o produto escaneado.', 'success');
+    showMessage('Faça login para registrar movimentação do produto escaneado.', 'success');
     return;
   }
 
   try {
     const produto = await fetchJson(`/api/products/${produtoId}`);
     selectedQrProductId = produtoId;
-    const status = produto.quantity <= produto.minQuantity ? 'Crítico' : 'Estável';
-
-    document.getElementById('produtoQrModalCode').textContent = formatProductCode(produtoId);
-    document.getElementById('produtoQrNome').textContent = produto.name || '-';
-    document.getElementById('produtoQrCategoria').textContent = produto.category || '-';
-    document.getElementById('produtoQrQuantidade').textContent = produto.quantity ?? 0;
-    document.getElementById('produtoQrMinimo').textContent = produto.minQuantity ?? 0;
-    document.getElementById('produtoQrPreco').textContent = `R$ ${Number(produto.price || 0).toFixed(2)}`;
-    document.getElementById('produtoQrStatus').textContent = status;
-
-    switchTab('estoque');
-    const search = document.getElementById('searchEstoque');
-    if (search) {
-      search.value = produto.name || formatProductCode(produtoId);
-      filtrarEstoque();
+    switchTab('movimentacao');
+    const selected = await selectMovementProductById(produtoId);
+    if (selected) {
+      showMessage(`Produto selecionado pelo QR Code: ${produto.name || formatProductCode(produtoId)}.`, 'success');
+    } else {
+      showMessage('Produto do QR Code não está ativo para movimentação.', 'error');
     }
-
-    const modal = document.getElementById('produtoQrModal');
-    modal.classList.add('visible');
-    modal.setAttribute('aria-hidden', 'false');
   } catch (err) {
     showMessage('Produto do QR Code não encontrado: ' + err.message, 'error');
   }
@@ -1283,13 +1452,9 @@ document.addEventListener('DOMContentLoaded', () => {
   renderUserProfile();
   updateAdminNav();
   updateNavVisibility();
-  switchTab(currentUser ? 'dashboard' : 'login');
+  switchTab(currentUser ? (userMustChangePassword() ? 'change-password' : 'dashboard') : 'login');
   loadPublicAppBaseUrl();
-  loadCategories();
-  loadDashboard();
-  loadProductsIntoTable();
-  loadMovementsIntoHistory();
-  loadAISuggestions();
+  loadAuthenticatedData();
   atualizarModoFormularioProduto();
   atualizarModoFormularioCategoria();
   setUsuarioAdminFormEnabled(false);
@@ -1303,7 +1468,12 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   if (pendingQrProductId) {
-    showMessage('QR Code lido. Faça login para abrir o produto.', 'success');
+    showMessage('QR Code lido. Faça login para registrar a movimentação.', 'success');
+    if (currentUser && !userMustChangePassword()) {
+      continueAfterPasswordReady();
+    }
+  } else if (window.location.search) {
+    clearProductIdFromUrl();
   }
 
   document.getElementById('movProductSearch').addEventListener('input', renderMovementProductOptions);
@@ -1312,6 +1482,9 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('movQtyInput').addEventListener('input', updateMovementProductPanel);
   document.getElementById('iaHorizonSelect').addEventListener('change', loadAISuggestions);
   document.getElementById('iaSeedHistoryBtn').addEventListener('click', generateAiTestHistory);
+  document.getElementById('backupDatabaseBtn').addEventListener('click', () => downloadAuthenticatedFile('/api/backup/database', 'inventory-backup.db'));
+  document.getElementById('backupJsonBtn').addEventListener('click', () => downloadAuthenticatedFile('/api/backup/export', 'inventory-export.json'));
+  document.getElementById('refreshAuditBtn').addEventListener('click', loadAuditLogs);
 
   document.getElementById('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -1329,16 +1502,50 @@ document.addEventListener('DOMContentLoaded', () => {
       updateAdminNav();
       updateNavVisibility();
       showMessage('Login realizado com sucesso.', 'success');
-      if (pendingQrProductId) {
-        const productId = pendingQrProductId;
-        pendingQrProductId = null;
-        await abrirProdutoPorQRCode(productId);
+      if (userMustChangePassword()) {
+        switchTab('change-password');
+        showMessage('Troque sua senha inicial para continuar.', 'success');
       } else {
-        switchTab('dashboard');
+        await continueAfterPasswordReady();
       }
       document.getElementById('loginForm').reset();
     } catch (err) {
       showMessage('Falha no login: ' + err.message, 'error');
+    }
+  });
+
+  document.getElementById('changePasswordForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const currentPassword = document.getElementById('currentPassword').value;
+    const newPassword = document.getElementById('newPassword').value;
+    const newPasswordConfirm = document.getElementById('newPasswordConfirm').value;
+
+    if (newPassword !== newPasswordConfirm) {
+      showMessage('As novas senhas não coincidem.', 'error');
+      return;
+    }
+
+    if (!currentUser?.id) {
+      showMessage('Faça login novamente para alterar sua senha.', 'error');
+      switchTab('login');
+      return;
+    }
+
+    try {
+      currentUser = await fetchJson(`/api/users/${currentUser.id}/change-password`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword, newPassword })
+      });
+      saveCurrentUserSession();
+      renderUserProfile();
+      updateAdminNav();
+      updateNavVisibility();
+      document.getElementById('changePasswordForm').reset();
+      showMessage('Senha alterada com sucesso.', 'success');
+      await continueAfterPasswordReady();
+    } catch (err) {
+      showMessage('Erro ao alterar senha: ' + err.message, 'error');
     }
   });
 
@@ -1363,10 +1570,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       await fetchJson('/api/users/register', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Role': currentUser.role || ''
-        },
+        headers: adminHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ username, name, role, password })
       });
       showMessage('Usuário criado com sucesso.', 'success');
@@ -1503,7 +1707,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const qty = parseInt(document.getElementById('movQtyInput').value||'0',10);
     const type = document.getElementById('movTypeSelect').value;
     const quantityChange = type === 'Entrada' ? qty : -qty;
-    const operator = currentUser?.name || currentUser?.username || 'Sistema';
 
     if (!productId) {
       showMessage('Selecione um produto para movimentar.', 'error');
@@ -1522,7 +1725,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     try {
-      await fetchJson('/api/movements', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ productId, quantityChange, operator }) });
+      await fetchJson('/api/movements', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ productId, quantityChange }) });
       showMessage('Movimentação registrada com sucesso.', 'success');
       document.getElementById('movQtyInput').value = '1';
       await loadProductsIntoTable();
@@ -1540,7 +1743,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const activeStatus = encodeURIComponent(document.getElementById('filterAtivo').value || '');
     const url = `/api/products/export?search=${search}&category=${category}&status=${status}&activeStatus=${activeStatus}`;
     try {
-      const res = await fetch(apiUrl(url));
+      const res = await authFetch(url);
       if (!res.ok) throw new Error('Falha ao exportar');
       const blob = await res.blob();
       const a = document.createElement('a');
@@ -1559,7 +1762,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const query = getMovementFilterParams(false);
     const url = query ? `/api/movements/export?${query}` : '/api/movements/export';
     try {
-      const res = await fetch(apiUrl(url));
+      const res = await authFetch(url);
       if (!res.ok) throw new Error('Falha ao exportar histórico');
       const blob = await res.blob();
       const a = document.createElement('a');

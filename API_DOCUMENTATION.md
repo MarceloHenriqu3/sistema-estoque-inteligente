@@ -7,6 +7,48 @@ http://localhost:5000
 
 ---
 
+## 🔐 Autenticação
+
+Quase todos os endpoints da API exigem autenticação JWT. Primeiro faça login:
+
+```http
+POST /api/users/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "admin123"
+}
+```
+
+**Response (200):**
+```json
+{
+  "id": 1,
+  "username": "admin",
+  "name": "Marcelo Henrique",
+  "role": "Administrador",
+  "isActive": true,
+  "mustChangePassword": false,
+  "token": "eyJhbGciOiJIUzI1NiIs..."
+}
+```
+
+Use o token nas próximas requisições:
+
+```http
+Authorization: Bearer SEU_TOKEN_AQUI
+```
+
+Perfis:
+- **Administrador:** gerencia usuários e também acessa as funções operacionais.
+- **Operador:** acessa estoque, categorias, produtos, movimentações, histórico e IA.
+- **Troca pendente:** usuário só pode alterar a própria senha até concluir o primeiro acesso.
+
+Em produção, o backend exige a variável `INVENTORY_JWT_SECRET`. Sem ela, a API não inicia em ambiente `Production`.
+
+---
+
 ## 📊 Dashboard
 
 ### GET /api/dashboard
@@ -15,6 +57,7 @@ Obtém KPIs do dashboard inicial.
 **Request:**
 ```http
 GET /api/dashboard
+Authorization: Bearer SEU_TOKEN_AQUI
 ```
 
 **Response (200):**
@@ -23,7 +66,11 @@ GET /api/dashboard
   "totalProducts": 50,
   "critical": 5,
   "movementsToday": 12,
-  "aiSuggestionsCount": 3
+  "stockValue": 15420.50,
+  "inactiveProducts": 2,
+  "criticalProducts": [],
+  "latestMovements": [],
+  "criticalCategories": []
 }
 ```
 
@@ -31,7 +78,49 @@ GET /api/dashboard
 - `totalProducts` (int): Total de produtos cadastrados
 - `critical` (int): Produtos com estoque abaixo do mínimo
 - `movementsToday` (int): Movimentações registradas hoje
-- `aiSuggestionsCount` (int): Produtos com sugestão de reabastecimento
+- `stockValue` (decimal): Valor total do estoque ativo
+- `inactiveProducts` (int): Produtos inativos
+- `criticalProducts` (array): Produtos críticos prioritários
+- `latestMovements` (array): Últimas movimentações
+- `criticalCategories` (array): Categorias com itens críticos
+
+---
+
+## 🗂️ Categorias
+
+### GET /api/categories
+Lista categorias cadastradas.
+
+Permissão: usuário autenticado com senha regular.
+
+### POST /api/categories
+Cria uma categoria.
+
+Permissão: usuário autenticado com senha regular.
+
+### PUT /api/categories/{id}
+Atualiza uma categoria e reflete o novo nome nos produtos vinculados.
+
+Permissão: usuário autenticado com senha regular.
+
+### DELETE /api/categories/{id}
+Exclui uma categoria, desde que ela não esteja em uso por produtos.
+
+Permissão: usuário autenticado com senha regular.
+
+### PUT /api/categories/{id}/active
+Ativa ou desativa uma categoria sem apagar seu histórico.
+
+Permissão: usuário autenticado com senha regular.
+
+```http
+PUT /api/categories/1/active
+Content-Type: application/json
+
+{
+  "isActive": false
+}
+```
 
 ---
 
@@ -90,13 +179,16 @@ GET /api/products?page=1&pageSize=20&search=Notebook&category=Eletrônicos
 
 **Exemplo curl:**
 ```bash
-curl "http://localhost:5000/api/products?page=1&pageSize=10&search=Notebook"
+curl "http://localhost:5000/api/products?page=1&pageSize=10&search=Notebook" \
+  -H "Authorization: Bearer SEU_TOKEN_AQUI"
 ```
 
 ---
 
 ### POST /api/products
 Cria um novo produto.
+
+Permissão: usuário autenticado com senha regular.
 
 **Request:**
 ```http
@@ -141,6 +233,7 @@ Content-Type: application/json
 **Exemplo curl:**
 ```bash
 curl -X POST http://localhost:5000/api/products \
+  -H "Authorization: Bearer SEU_TOKEN_AQUI" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Monitor LG 27",
@@ -182,6 +275,8 @@ GET /api/products/1
 ### PUT /api/products/{id}
 Atualiza um produto existente.
 
+Permissão: usuário autenticado com senha regular.
+
 **Request:**
 ```http
 PUT /api/products/1
@@ -212,16 +307,23 @@ Content-Type: application/json
 
 ---
 
-### DELETE /api/products/{id}
-Deleta um produto (soft delete - marca como inativo).
+### PUT /api/products/{id}/active
+Ativa ou desativa um produto sem apagar o histórico.
+
+Permissão: usuário autenticado com senha regular.
 
 **Request:**
 ```http
-DELETE /api/products/1
+PUT /api/products/1/active
+Content-Type: application/json
+
+{
+  "isActive": false
+}
 ```
 
-**Response (204 No Content):**
-(sem corpo)
+**Response (200):**
+Retorna o produto atualizado.
 
 ---
 
@@ -251,7 +353,8 @@ Id,Name,Category,Quantity,MinQuantity,Price,IsActive
 
 **Exemplo curl:**
 ```bash
-curl "http://localhost:5000/api/products/export?search=Notebook" > products.csv
+curl "http://localhost:5000/api/products/export?search=Notebook" \
+  -H "Authorization: Bearer SEU_TOKEN_AQUI" > products.csv
 ```
 
 ---
@@ -332,9 +435,7 @@ Content-Type: application/json
 
 {
   "productId": 1,
-  "type": "IN",
-  "quantityChange": 10,
-  "operator": "João Silva"
+  "quantityChange": 10
 }
 ```
 
@@ -342,11 +443,9 @@ Content-Type: application/json
 | Campo | Tipo | Obrigatório | Descrição |
 |-------|------|------------|-----------|
 | productId | int | Sim | ID do produto |
-| type | string | Sim | "IN" (entrada) ou "OUT" (saída) |
-| quantityChange | int | Sim | Magnitude (sempre positivo, sinal é determinado por `type`) |
-| operator | string | Não | Quem registrou (padrão: "System") |
+| quantityChange | int | Sim | Positivo para entrada, negativo para saída |
 
-**Response (201):**
+**Response (200):**
 ```json
 {
   "id": 101,
@@ -363,15 +462,16 @@ Content-Type: application/json
   "quantityChange": 10,
   "type": "IN",
   "timestamp": "2026-06-01T14:45:00",
-  "operator": "João Silva"
+  "operator": "Marcelo Henrique"
 }
 ```
 
 **Validações:**
 - productId deve existir
-- quantityChange deve ser > 0
-- type deve ser "IN" ou "OUT"
-- Movimento OUT não pode deixar estoque negativo (opcional, implementação específica)
+- quantityChange não pode ser zero
+- Produto inativo não recebe movimentações
+- Saída não pode deixar estoque negativo
+- Operador é obtido automaticamente pelo token JWT
 
 **Erros:**
 - `400 Bad Request`: Validação falhou
@@ -381,12 +481,11 @@ Content-Type: application/json
 **Exemplo curl:**
 ```bash
 curl -X POST http://localhost:5000/api/movements \
+  -H "Authorization: Bearer SEU_TOKEN_AQUI" \
   -H "Content-Type: application/json" \
   -d '{
     "productId": 1,
-    "type": "OUT",
-    "quantityChange": 3,
-    "operator": "Vendedor João"
+    "quantityChange": -3
   }'
 ```
 
@@ -474,37 +573,70 @@ GET /api/ai/suggestions
 ---
 
 ### GET /api/ai/predict/{productId}
-Prevê demanda futura com base em média móvel de 30 dias.
+Prevê demanda futura com base no histórico de saídas.
 
 **Request:**
 ```http
-GET /api/ai/predict/1
+GET /api/ai/predict/1?days=15
 ```
 
 **Response (200):**
 ```json
 {
   "productId": 1,
-  "productName": "Notebook Dell",
-  "totalMovementsLast30Days": 45,
-  "outflowsCount": 15,
-  "averageDailyOutflow": 0.5,
-  "recommendedOrder": 15,
-  "confidence": "medium",
-  "analysis": "Baseado em 15 saídas em 30 dias = 0.5 por dia"
+  "horizonDays": 15,
+  "predictedDailyOutflow": 1.8,
+  "recommendedOrder": 22,
+  "method": "ML.NET SDCA Regression",
+  "daysWithOutflow": 9,
+  "observationDays": 14,
+  "confidencePercent": 84
 }
 ```
 
 **Campos:**
-- `totalMovementsLast30Days`: Total de movimentações (IN + OUT)
-- `outflowsCount`: Apenas movimentações de saída (OUT)
-- `averageDailyOutflow`: outflowsCount / 30
-- `recommendedOrder`: averageDailyOutflow × 30 (estoque para 30 dias)
-- `confidence`: "high" | "medium" | "low" (baseado em volume de dados)
-- `analysis`: Descrição textual da análise
+- `horizonDays`: horizonte de previsão solicitado
+- `predictedDailyOutflow`: saída diária estimada
+- `recommendedOrder`: quantidade recomendada para compra
+- `method`: método usado, como média histórica ou ML.NET SDCA Regression
+- `daysWithOutflow`: quantidade de dias com saída registrada
+- `observationDays`: período observado
+- `confidencePercent`: confiança estimada conforme volume de histórico
 
 **Erros:**
 - `404 Not Found`: Produto não encontrado
+
+---
+
+## 🧾 Auditoria e Backup
+
+Endpoints disponíveis apenas para Administrador.
+
+### GET /api/audit-logs
+Lista os eventos de auditoria mais recentes.
+
+```http
+GET /api/audit-logs?page=1&pageSize=30
+Authorization: Bearer SEU_TOKEN_ADMIN
+```
+
+Registra eventos como login, alteração de usuário, criação/edição de produto, movimentação de estoque, simulação de IA e backup.
+
+### GET /api/backup/database
+Baixa uma cópia completa do arquivo SQLite.
+
+```http
+GET /api/backup/database
+Authorization: Bearer SEU_TOKEN_ADMIN
+```
+
+### GET /api/backup/export
+Exporta os dados principais em JSON, incluindo produtos, categorias, movimentações, usuários sem hash de senha e logs de auditoria.
+
+```http
+GET /api/backup/export
+Authorization: Bearer SEU_TOKEN_ADMIN
+```
 
 ---
 
@@ -515,6 +647,8 @@ GET /api/ai/predict/1
 | 200 | OK - Requisição bem-sucedida |
 | 201 | Created - Recurso criado com sucesso |
 | 204 | No Content - Ação executada (sem corpo de resposta) |
+| 401 | Unauthorized - Token ausente ou inválido |
+| 403 | Forbidden - Usuário sem permissão para a rota |
 | 400 | Bad Request - Erro de validação |
 | 404 | Not Found - Recurso não encontrado |
 | 500 | Internal Server Error - Erro no servidor |
@@ -533,13 +667,15 @@ GET /api/ai/predict/1
 ## 🔐 Segurança (Informações)
 
 ### Status Atual
-- ⚠️ Sem autenticação obrigatória
+- ✅ Autenticação obrigatória via JWT
+- ✅ Rotas administrativas protegidas por perfil
+- ✅ Senhas armazenadas com hash seguro PBKDF2
 - ✅ Proteção contra SQL Injection (Entity Framework Core)
 - ⚠️ Sem rate limiting
 - ⚠️ Sem encriptação TLS (usar em produção com HTTPS)
 
 ### Recomendações
-1. Adicionar autenticação JWT
+1. Configurar `INVENTORY_JWT_SECRET` em ambiente real
 2. Implementar CORS com origin específico
 3. Usar HTTPS em produção
 4. Validar todas as entradas
@@ -552,8 +688,14 @@ GET /api/ai/predict/1
 ### Cenário: Criar produto e registrar movimento
 
 ```bash
-# 1. Criar produto
+# 1. Login
+TOKEN=$(curl -s -X POST http://localhost:5000/api/users/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}' | jq -r .token)
+
+# 2. Criar produto
 curl -X POST http://localhost:5000/api/products \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Webcam HD",
@@ -564,28 +706,31 @@ curl -X POST http://localhost:5000/api/products \
   }'
 # Response: { "id": 11, ... }
 
-# 2. Listar produtos (verificar)
-curl http://localhost:5000/api/products?page=1&pageSize=5
+# 3. Listar produtos (verificar)
+curl "http://localhost:5000/api/products?page=1&pageSize=5" \
+  -H "Authorization: Bearer $TOKEN"
 
-# 3. Registrar movimento (saída de 2 unidades)
+# 4. Registrar movimento (saída de 2 unidades)
 curl -X POST http://localhost:5000/api/movements \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "productId": 11,
-    "type": "OUT",
-    "quantityChange": 2,
-    "operator": "Vendedor 1"
+    "quantityChange": -2
   }'
 # Estoque reduz de 10 para 8
 
-# 4. Consultar histórico
-curl http://localhost:5000/api/history/11
+# 5. Consultar histórico
+curl http://localhost:5000/api/history/11 \
+  -H "Authorization: Bearer $TOKEN"
 
-# 5. Buscar sugestões IA
-curl http://localhost:5000/api/ai/suggestions
+# 6. Buscar sugestões IA
+curl http://localhost:5000/api/ai/suggestions \
+  -H "Authorization: Bearer $TOKEN"
 
-# 6. Prever demanda
-curl http://localhost:5000/api/ai/predict/11
+# 7. Prever demanda
+curl "http://localhost:5000/api/ai/predict/11?days=15" \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ---

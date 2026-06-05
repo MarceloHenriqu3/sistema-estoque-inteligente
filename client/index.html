@@ -84,6 +84,28 @@
             </div>
         </div>
 
+        <div id="change-password" class="tab-content">
+            <div class="form-layout auth-layout">
+                <h2>Alterar Senha</h2>
+                <form id="changePasswordForm">
+                    <div class="form-row">
+                        <label for="currentPassword">Senha Atual</label>
+                        <input type="password" id="currentPassword" class="form-control" placeholder="Digite a senha recebida" required>
+                    </div>
+                    <div class="form-row">
+                        <label for="newPassword">Nova Senha</label>
+                        <input type="password" id="newPassword" class="form-control" placeholder="Digite uma nova senha" minlength="4" required>
+                    </div>
+                    <div class="form-row">
+                        <label for="newPasswordConfirm">Confirme a Nova Senha</label>
+                        <input type="password" id="newPasswordConfirm" class="form-control" placeholder="Repita a nova senha" minlength="4" required>
+                    </div>
+                    <button type="submit" class="btn-submit">Salvar Nova Senha</button>
+                    <p class="auth-note">Por segurança, operadores devem trocar a senha inicial antes de acessar o sistema.</p>
+                </form>
+            </div>
+        </div>
+
         <div id="usuarios" class="tab-content">
             <div class="form-layout">
                 <div class="form-heading">
@@ -140,6 +162,36 @@
                     <tbody>
                     </tbody>
                 </table>
+            </div>
+
+            <div class="form-layout admin-security-panel">
+                <div class="form-heading">
+                    <div>
+                        <h2>Segurança, Auditoria e Backup</h2>
+                        <p>Exporte uma cópia completa do banco e acompanhe os eventos administrativos recentes.</p>
+                    </div>
+                    <span class="badge bg-primary">Administrador</span>
+                </div>
+                <div class="form-actions">
+                    <button type="button" id="backupDatabaseBtn" class="btn-submit">Baixar Banco SQLite</button>
+                    <button type="button" id="backupJsonBtn" class="btn-submit secondary">Exportar JSON Completo</button>
+                    <button type="button" id="refreshAuditBtn" class="btn-submit secondary">Atualizar Auditoria</button>
+                </div>
+                <div class="table-responsive">
+                    <table id="tabelaAuditoria">
+                        <thead>
+                            <tr>
+                                <th>Data</th>
+                                <th>Usuário</th>
+                                <th>Ação</th>
+                                <th>Entidade</th>
+                                <th>Detalhes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
@@ -296,6 +348,7 @@
                         <tr>
                             <th>ID</th>
                             <th>Categoria</th>
+                            <th>Status</th>
                             <th>Ações</th>
                         </tr>
                     </thead>
@@ -406,8 +459,9 @@
                 <div class="movement-warning" id="movementWarning" style="display:none;"></div>
                 <button type="button" id="movSubmitBtn" class="btn-submit">Salvar Movimentação</button>
                 
-                <div class="qr-simulation-box">
-                    [Simulador Integrado de Leitor de Código QR / Câmera Ativa]
+                <div class="qr-flow-note">
+                    <strong>Fluxo com QR Code físico</strong>
+                    <span>Escaneie o QR Code pela câmera do celular. Após o login, o sistema abre esta tela com o produto já selecionado para movimentação.</span>
                 </div>
             </div>
         </div>
@@ -529,7 +583,7 @@
                     <div class="ai-panel">
                         <div class="panel-header">
                             <div class="panel-title">Projeção de Demanda Estimada</div>
-                            <span class="badge bg-primary">Algoritmo: ML.NET FastTree</span>
+                            <span class="badge bg-primary">Algoritmo: ML.NET SDCA Regression</span>
                         </div>
                         <p class="ai-helper-text">Volume de saídas previsto conforme o horizonte selecionado e o histórico de movimentações.</p>
                         
