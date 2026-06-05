@@ -13,3 +13,4 @@ git push
 abrir no mobile:
 cd "c:\Users\marce\OneDrive\Desktop\Faculdade\TCC_project_COMPLETO\server"
 dotnet run --urls "http://0.0.0.0:5000"
+url: 192.168.0.199:5000
