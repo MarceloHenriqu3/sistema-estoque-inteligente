@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
@@ -473,8 +474,9 @@ app.MapDelete("/api/users/{id}", async (int id, InventoryContext db, HttpContext
 
 app.MapGet("/api/products/{id}", async (int id, InventoryContext db) => await db.Products.FindAsync(id) is Product p ? Results.Ok(p) : Results.NotFound())
     .RequireAuthorization("PasswordReady");
-app.MapPost("/api/products", async (Product p, InventoryContext db, HttpContext httpContext) =>
+app.MapPost("/api/products", async ([FromBody] Product? p, InventoryContext db, HttpContext httpContext) =>
 {
+    if (p == null) return Results.BadRequest("Dados do produto são obrigatórios.");
     p.Name = p.Name.Trim();
     if (string.IsNullOrWhiteSpace(p.Name)) return Results.BadRequest("Nome do produto é obrigatório.");
     if (await db.Products.AnyAsync(existing => existing.Name.ToLower() == p.Name.ToLower()))
@@ -486,10 +488,11 @@ app.MapPost("/api/products", async (Product p, InventoryContext db, HttpContext 
     return Results.Created($"/api/products/{p.Id}", p);
 }).RequireAuthorization("PasswordReady");
 
-app.MapPut("/api/products/{id}", async (int id, Product updatedProduct, InventoryContext db, HttpContext httpContext) =>
+app.MapPut("/api/products/{id}", async (int id, [FromBody] Product? updatedProduct, InventoryContext db, HttpContext httpContext) =>
 {
     var product = await db.Products.FindAsync(id);
     if (product == null) return Results.NotFound();
+    if (updatedProduct == null) return Results.BadRequest("Dados do produto são obrigatórios.");
     updatedProduct.Name = updatedProduct.Name.Trim();
     if (string.IsNullOrWhiteSpace(updatedProduct.Name)) return Results.BadRequest("Nome do produto é obrigatório.");
     if (await db.Products.AnyAsync(existing => existing.Id != id && existing.Name.ToLower() == updatedProduct.Name.ToLower()))
@@ -690,13 +693,14 @@ app.MapPost("/api/ai/test-history", async (AiTestHistoryDto dto, InventoryContex
     if (!product.IsActive) return Results.BadRequest("Produto inativo não pode receber histórico simulado.");
 
     var averageOutflow = Math.Clamp(dto.AverageOutflow <= 0 ? 2 : dto.AverageOutflow, 1, 999);
-    var startDate = DateTime.UtcNow.Date.AddDays(-6);
+    var daysToGenerate = Math.Clamp(dto.DaysToGenerate <= 0 ? 14 : dto.DaysToGenerate, 7, 60);
+    var startDate = DateTime.UtcNow.Date.AddDays(-(daysToGenerate - 1));
     var existingSimulation = await db.Movements
         .Where(m => m.ProductId == product.Id && m.Operator == "Simulação IA")
         .ToListAsync();
     db.Movements.RemoveRange(existingSimulation);
 
-    for (var day = 0; day < 7; day++)
+    for (var day = 0; day < daysToGenerate; day++)
     {
         var variation = day % 3 - 1;
         var quantity = Math.Max(1, averageOutflow + variation);
@@ -711,8 +715,8 @@ app.MapPost("/api/ai/test-history", async (AiTestHistoryDto dto, InventoryContex
     }
 
     await db.SaveChangesAsync();
-    await LogAuditAsync(db, httpContext, "AI_TEST_HISTORY", "Product", product.Id.ToString(), $"Histórico simulado de IA gerado para {product.Name}; média {averageOutflow}; registros substituídos {existingSimulation.Count}");
-    return Results.Ok(new { product.Id, product.Name, daysGenerated = 7, averageOutflow, replacedMovements = existingSimulation.Count });
+    await LogAuditAsync(db, httpContext, "AI_TEST_HISTORY", "Product", product.Id.ToString(), $"Histórico simulado de IA gerado para {product.Name}; dias {daysToGenerate}; média {averageOutflow}; registros substituídos {existingSimulation.Count}");
+    return Results.Ok(new { product.Id, product.Name, daysGenerated = daysToGenerate, averageOutflow, replacedMovements = existingSimulation.Count });
 }).RequireAuthorization("Admin");
 
 app.MapGet("/api/audit-logs", async (int? page, int? pageSize, string? action, string? entity, string? username, InventoryContext db) =>
@@ -1115,6 +1119,7 @@ public class AiTestHistoryDto
 {
     public int ProductId { get; set; }
     public int AverageOutflow { get; set; } = 2;
+    public int DaysToGenerate { get; set; } = 14;
 }
 
 public class CategoryDto

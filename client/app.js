@@ -11,6 +11,7 @@ let systemUsers = [];
 let auditLogs = [];
 let selectedAdminUserId = null;
 let movementProducts = [];
+let aiInsightsRefreshPromise = null;
 const API_BASE_URL = window.location.protocol === 'file:' ? 'http://localhost:5123' : '';
 const SESSION_USER_KEY = 'estoqueInteligente.currentUser';
 
@@ -143,6 +144,7 @@ function updateNavVisibility() {
 function logout() {
   currentUser = null;
   clearCurrentUserSession();
+  document.getElementById('loginForm')?.reset();
   renderUserProfile();
   updateAdminNav();
   updateNavVisibility();
@@ -241,8 +243,22 @@ function renderCriticalStockAlert(criticalCount, criticalProducts) {
       <strong>${criticalCount} produto(s) precisam de reposição</strong>
       <span>${productNames ? `Prioridade: ${productNames}${suffix}.` : 'Verifique a lista de produtos críticos.'}</span>
     </div>
-    <button type="button" onclick="switchTab('estoque')">Ver Estoque</button>
+    <button type="button" onclick="openCriticalStockFilter()">Ver Estoque</button>
   `;
+}
+
+function openCriticalStockFilter() {
+  switchTab('estoque');
+  const search = document.getElementById('searchEstoque');
+  const category = document.getElementById('filterCategoria');
+  const status = document.getElementById('filterStatus');
+  const active = document.getElementById('filterAtivo');
+  if (search) search.value = '';
+  if (category) category.value = '';
+  if (status) status.value = 'Crítico';
+  if (active) active.value = 'active';
+  productsPaginationState.page = 1;
+  loadProductsIntoTable();
 }
 
 function renderEmptyDashboardList(targetId, message) {
@@ -450,14 +466,15 @@ function renderUserProfile() {
 }
 
 async function continueAfterPasswordReady() {
-  await loadAuthenticatedData();
   if (pendingQrProductId) {
+    await loadAuthenticatedData();
     const productId = pendingQrProductId;
     pendingQrProductId = null;
     clearProductIdFromUrl();
     await abrirProdutoPorQRCode(productId);
   } else {
     switchTab('dashboard');
+    loadAuthenticatedData();
   }
 }
 
@@ -467,9 +484,9 @@ async function loadAuthenticatedData() {
     loadCategories(),
     loadDashboard(),
     loadProductsIntoTable(),
-    loadMovementsIntoHistory(),
-    loadAISuggestions()
+    loadMovementsIntoHistory()
   ]);
+  refreshAiInsightsInBackground();
 }
 
 async function loadProductsIntoTable() {
@@ -823,22 +840,55 @@ function renderDashboardAiInsights({
   `;
 }
 
+function refreshAiInsightsInBackground() {
+  if (!currentUser || userMustChangePassword()) return null;
+  if (aiInsightsRefreshPromise) return aiInsightsRefreshPromise;
+
+  const insights = document.getElementById('ai-insights');
+  if (insights) {
+    insights.innerHTML = '<p>Atualizando análise preditiva em segundo plano...</p>';
+  }
+
+  aiInsightsRefreshPromise = loadAISuggestions()
+    .catch((err) => console.error('Failed to refresh dashboard AI insights', err))
+    .finally(() => {
+      aiInsightsRefreshPromise = null;
+    });
+
+  return aiInsightsRefreshPromise;
+}
+
 async function loadAISuggestions() {
+  if (!currentUser || userMustChangePassword()) return;
+
   try {
+    document.getElementById('iaSummaryProducts').textContent = '...';
+    document.getElementById('iaSummaryCritical').textContent = '...';
+    document.getElementById('iaSummaryRecommended').textContent = '...';
+    document.getElementById('iaSummaryLowConfidence').textContent = '...';
+    document.getElementById('ia-health').innerText = '...';
+    document.getElementById('ia-charts').innerHTML = '<div class="dashboard-empty">Calculando previsões dos produtos ativos...</div>';
+    document.getElementById('ia-orders').innerHTML = '<li class="dashboard-empty">Calculando recomendações...</li>';
+    document.querySelector('#iaPredictionTable tbody').innerHTML = '<tr><td colspan="8">Calculando análise preditiva...</td></tr>';
+    document.getElementById('ia-report').innerText = 'Processando histórico de movimentações e estimando demanda futura.';
+
     const suggestions = await fetchJson('/api/ai/suggestions');
     document.getElementById('kpi-ai-suggestions').innerText = suggestions.length || 0;
 
     const horizonDays = parseInt(document.getElementById('iaHorizonSelect')?.value || '15', 10);
     const productsRes = await authFetch('/api/products?page=1&pageSize=1000&activeStatus=active');
+    if (!productsRes.ok) throw new Error(await productsRes.text());
     const productsData = await productsRes.json();
     const products = productsData.items || productsData;
-    renderAiSeedProductOptions(products);
-    const predictions = [];
-
-    for (const p of products) {
-      const pred = await fetchJson(`/api/ai/predict/${p.id}?days=${horizonDays}`);
-      predictions.push({ product: p, prediction: pred });
-    }
+    const predictions = (await Promise.all(products.map(async (p) => {
+      try {
+        const pred = await fetchJson(`/api/ai/predict/${p.id}?days=${horizonDays}`);
+        return { product: p, prediction: pred };
+      } catch (err) {
+        console.error('Failed to predict product', p.id, err);
+        return null;
+      }
+    }))).filter(Boolean);
 
     const recommendedProducts = predictions
       .filter(item => Number(item.prediction.recommendedOrder || 0) > 0)
@@ -929,48 +979,9 @@ async function loadAISuggestions() {
 
   } catch (e) {
     console.error('Failed to load AI data', e);
-  }
-}
-
-function renderAiSeedProductOptions(products) {
-  const select = document.getElementById('iaSeedProductSelect');
-  if (!select) return;
-
-  const currentValue = select.value;
-  select.innerHTML = '';
-  products.forEach(product => {
-    const opt = document.createElement('option');
-    opt.value = product.id;
-    opt.textContent = `${product.name} (${formatProductCode(product.id)})`;
-    select.appendChild(opt);
-  });
-
-  if (products.some(product => product.id.toString() === currentValue)) {
-    select.value = currentValue;
-  }
-}
-
-async function generateAiTestHistory() {
-  const productId = parseInt(document.getElementById('iaSeedProductSelect').value || '0', 10);
-  const averageOutflow = parseInt(document.getElementById('iaSeedAverageOutflow').value || '2', 10);
-
-  if (!productId) {
-    showMessage('Selecione um produto para gerar histórico.', 'error');
-    return;
-  }
-
-  try {
-    await fetchJson('/api/ai/test-history', {
-      method: 'POST',
-      headers: adminHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ productId, averageOutflow })
-    });
-    showMessage('Histórico de teste substituído pelos últimos 7 dias.', 'success');
-    await loadAISuggestions();
-    await loadMovementsIntoHistory();
-    await loadDashboard();
-  } catch (err) {
-    showMessage('Erro ao gerar histórico de teste: ' + err.message, 'error');
+    document.getElementById('ia-charts').innerHTML = '<div class="dashboard-empty">Não foi possível carregar a análise preditiva.</div>';
+    document.querySelector('#iaPredictionTable tbody').innerHTML = '<tr><td colspan="8">Erro ao calcular a análise.</td></tr>';
+    document.getElementById('ia-report').innerText = 'Verifique se há produtos ativos e histórico de movimentações disponível.';
   }
 }
 
@@ -1263,6 +1274,9 @@ function switchTab(tabId) {
   if (tabId === 'usuarios') {
     loadUsersAdmin();
     loadAuditLogs();
+  }
+  if (tabId === 'ia-preditiva') {
+    refreshAiInsightsInBackground();
   }
 }
 
@@ -1614,7 +1628,6 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('movTypeSelect').addEventListener('change', updateMovementProductPanel);
   document.getElementById('movQtyInput').addEventListener('input', updateMovementProductPanel);
   document.getElementById('iaHorizonSelect').addEventListener('change', loadAISuggestions);
-  document.getElementById('iaSeedHistoryBtn').addEventListener('click', generateAiTestHistory);
   document.getElementById('backupDatabaseBtn').addEventListener('click', () => downloadAuthenticatedFile('/api/backup/database', 'inventory-backup.db'));
   document.getElementById('backupJsonBtn').addEventListener('click', () => downloadAuthenticatedFile('/api/backup/export', 'inventory-export.json'));
   document.getElementById('refreshAuditBtn').addEventListener('click', loadAuditLogs);
@@ -1634,8 +1647,13 @@ document.addEventListener('DOMContentLoaded', () => {
     e.preventDefault();
     const username = document.getElementById('loginUsername').value.trim();
     const password = document.getElementById('loginPassword').value;
+    const submitButton = document.querySelector('#loginForm button[type="submit"]');
 
     try {
+      if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.textContent = 'Entrando...';
+      }
       currentUser = await fetchJson('/api/users/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1655,6 +1673,11 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('loginForm').reset();
     } catch (err) {
       showMessage('Falha no login: ' + err.message, 'error');
+    } finally {
+      if (submitButton) {
+        submitButton.disabled = false;
+        submitButton.textContent = 'Acessar Sistema';
+      }
     }
   });
 
