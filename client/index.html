@@ -47,7 +47,6 @@
                         <input type="password" id="loginPassword" class="form-control" placeholder="Digite sua senha" required>
                     </div>
                     <button type="submit" class="btn-submit">Acessar Sistema</button>
-                    <p class="auth-note">Apenas um administrador pode criar novos usuários.</p>
                 </form>
             </div>
         </div>
@@ -140,6 +139,10 @@
                             <input type="password" id="usuarioAdminPassword" class="form-control" placeholder="Preencha apenas para redefinir">
                         </div>
                     </div>
+                    <label class="checkbox-row">
+                        <input type="checkbox" id="usuarioAdminForcePasswordChange" checked>
+                        <span>Exigir troca de senha no próximo login</span>
+                    </label>
                     <div class="form-actions">
                         <button type="submit" class="btn-submit" id="btnSalvarUsuarioAdmin">Salvar Alterações</button>
                         <button type="button" class="btn-submit secondary" onclick="cancelarEdicaoUsuarioAdmin()">Cancelar</button>
@@ -177,6 +180,34 @@
                     <button type="button" id="backupJsonBtn" class="btn-submit secondary">Exportar JSON Completo</button>
                     <button type="button" id="refreshAuditBtn" class="btn-submit secondary">Atualizar Auditoria</button>
                 </div>
+                <div class="filter-wrapper audit-filter-wrapper">
+                    <div class="filter-group">
+                        <label for="auditActionFilter">Ação</label>
+                        <input type="text" id="auditActionFilter" class="form-control" placeholder="Ex.: LOGIN, UPDATE, STOCK">
+                    </div>
+                    <div class="filter-group">
+                        <label for="auditEntityFilter">Entidade</label>
+                        <select id="auditEntityFilter" class="form-control">
+                            <option value="">Todas</option>
+                            <option value="User">Usuário</option>
+                            <option value="Product">Produto</option>
+                            <option value="Category">Categoria</option>
+                            <option value="Movement">Movimentação</option>
+                            <option value="Database">Banco de Dados</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="auditUserFilter">Usuário</label>
+                        <input type="text" id="auditUserFilter" class="form-control" placeholder="Nome ou login">
+                    </div>
+                    <div class="filter-group">
+                        <label>Ações</label>
+                        <div class="filter-actions">
+                            <button type="button" id="applyAuditFiltersBtn" class="btn-submit">Filtrar</button>
+                            <button type="button" id="clearAuditFiltersBtn" class="btn-submit secondary">Limpar</button>
+                        </div>
+                    </div>
+                </div>
                 <div class="table-responsive">
                     <table id="tabelaAuditoria">
                         <thead>
@@ -198,6 +229,7 @@
         <div id="feedbackMessage" class="feedback-message"></div>
 
         <div id="dashboard" class="tab-content active">
+            <div id="criticalStockAlert" class="critical-stock-alert" style="display:none;"></div>
             <div class="kpi-container">
                 <div class="kpi-card">
                     <div class="kpi-title">Total de Produtos Ativos</div>
@@ -656,6 +688,9 @@
                 <strong id="qrModalCode"></strong>
             </div>
             <p class="qr-link-note" id="qrModalLink"></p>
+            <div class="form-actions modal-actions qr-print-actions">
+                <button type="button" class="btn-submit" onclick="imprimirQRCodeProduto()">Imprimir QR Code</button>
+            </div>
         </div>
     </div>
 

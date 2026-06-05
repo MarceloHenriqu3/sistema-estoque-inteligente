@@ -109,6 +109,42 @@ public class InventoryApiIntegrationTests : IClassFixture<WebApplicationFactory<
         Assert.Equal(HttpStatusCode.BadRequest, movementResponse.StatusCode);
     }
 
+    [Fact]
+    public async Task AdminResetPassword_CanRequirePasswordChangeForAnotherAdmin()
+    {
+        using var client = _factory.CreateClient();
+        var adminLogin = await LoginAsync(client, "admin", "admin123");
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminLogin.Token);
+
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var username = $"admin_test_{suffix}";
+        var createResponse = await client.PostAsJsonAsync("/api/users/register", new
+        {
+            username,
+            name = "Administrador Teste",
+            role = "Administrador",
+            password = "temp123"
+        });
+        createResponse.EnsureSuccessStatusCode();
+        var createdUser = await createResponse.Content.ReadFromJsonAsync<UserResponse>();
+
+        var resetResponse = await client.PutAsJsonAsync($"/api/users/{createdUser!.Id}/password", new
+        {
+            password = "reset123",
+            mustChangePassword = true
+        });
+        resetResponse.EnsureSuccessStatusCode();
+
+        var resetUser = await resetResponse.Content.ReadFromJsonAsync<UserResponse>();
+        var resetLogin = await LoginAsync(client, username, "reset123");
+
+        Assert.True(resetUser!.MustChangePassword);
+        Assert.True(resetLogin.MustChangePassword);
+
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminLogin.Token);
+        await client.DeleteAsync($"/api/users/{createdUser.Id}");
+    }
+
     private static async Task<LoginResponse> LoginAsync(HttpClient client, string username, string password)
     {
         var response = await client.PostAsJsonAsync("/api/users/login", new { username, password });

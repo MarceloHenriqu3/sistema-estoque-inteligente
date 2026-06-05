@@ -204,6 +204,7 @@ async function loadDashboard() {
     document.getElementById('kpi-movements-today').innerText = d.movementsToday;
     document.getElementById('kpi-stock-value').innerText = formatCurrency(d.stockValue || 0);
     document.getElementById('kpi-inactive-products').innerText = d.inactiveProducts || 0;
+    renderCriticalStockAlert(d.critical || 0, d.criticalProducts || []);
     renderDashboardCriticalProducts(d.criticalProducts || []);
     renderDashboardLatestMovements(d.latestMovements || []);
     renderDashboardCriticalCategories(d.criticalCategories || []);
@@ -217,6 +218,31 @@ function formatCurrency(value) {
     style: 'currency',
     currency: 'BRL'
   });
+}
+
+function renderCriticalStockAlert(criticalCount, criticalProducts) {
+  const alert = document.getElementById('criticalStockAlert');
+  if (!alert) return;
+
+  if (!criticalCount) {
+    alert.style.display = 'none';
+    alert.innerHTML = '';
+    return;
+  }
+
+  const productNames = criticalProducts
+    .slice(0, 3)
+    .map(product => escapeHtml(product.name))
+    .join(', ');
+  const suffix = criticalCount > 3 ? ` e mais ${criticalCount - 3}` : '';
+  alert.style.display = 'flex';
+  alert.innerHTML = `
+    <div>
+      <strong>${criticalCount} produto(s) precisam de reposição</strong>
+      <span>${productNames ? `Prioridade: ${productNames}${suffix}.` : 'Verifique a lista de produtos críticos.'}</span>
+    </div>
+    <button type="button" onclick="switchTab('estoque')">Ver Estoque</button>
+  `;
 }
 
 function renderEmptyDashboardList(targetId, message) {
@@ -346,10 +372,10 @@ function renderCategoriesTable() {
     const tr = document.createElement('tr');
     const isActive = category.isActive !== false;
     tr.innerHTML = `
-      <td>${category.id}</td>
-      <td>${escapeHtml(category.name)}</td>
-      <td><span class="badge ${isActive ? 'bg-success' : 'bg-muted'}">${isActive ? 'Ativa' : 'Inativa'}</span></td>
-      <td>
+      <td data-label="ID">${category.id}</td>
+      <td data-label="Categoria">${escapeHtml(category.name)}</td>
+      <td data-label="Status"><span class="badge ${isActive ? 'bg-success' : 'bg-muted'}">${isActive ? 'Ativa' : 'Inativa'}</span></td>
+      <td data-label="Ações">
         <div class="table-actions">
           <button type="button" class="btn-table-action primary" onclick="editarCategoria(${category.id})">Editar</button>
           <button type="button" class="btn-table-action ${isActive ? 'danger' : 'success'}" onclick="alterarStatusCategoria(${category.id}, ${!isActive})">${isActive ? 'Desativar' : 'Ativar'}</button>
@@ -465,14 +491,14 @@ async function loadProductsIntoTable() {
       tr.setAttribute('data-status', status);
       tr.setAttribute('data-ativo', p.isActive ? 'active' : 'inactive');
       tr.innerHTML = `
-        <td><code>${productCode}</code></td>
-        <td>${escapeHtml(p.name)}</td>
-        <td>${escapeHtml(p.category || '-')}</td>
-        <td>${p.quantity}</td>
-        <td>R$ ${(p.price || 0).toFixed(2)}</td>
-        <td><span class="badge ${status==='Crítico'?'bg-danger':'bg-success'}">${status}</span></td>
-        <td><span class="badge ${p.isActive ? 'bg-success' : 'bg-muted'}">${activeStatus}</span></td>
-        <td>
+        <td data-label="Código"><code>${productCode}</code></td>
+        <td data-label="Produto">${escapeHtml(p.name)}</td>
+        <td data-label="Categoria">${escapeHtml(p.category || '-')}</td>
+        <td data-label="Qtd">${p.quantity}</td>
+        <td data-label="Preço">R$ ${(p.price || 0).toFixed(2)}</td>
+        <td data-label="Estoque"><span class="badge ${status==='Crítico'?'bg-danger':'bg-success'}">${status}</span></td>
+        <td data-label="Status"><span class="badge ${p.isActive ? 'bg-success' : 'bg-muted'}">${activeStatus}</span></td>
+        <td data-label="Ações">
           <div class="table-actions">
             <button type="button" class="btn-table-action primary" onclick="editarProduto(${p.id})">Editar</button>
             <button type="button" class="btn-table-action" onclick="abrirQRCodeProduto(${p.id})">QR Code</button>
@@ -697,11 +723,11 @@ async function loadMovementsIntoHistory() {
       tr.setAttribute('data-tipo', typeDisplay);
       const dt = parseUtcDate(m.timestamp || m.Timestamp || m.timestampUtc);
       tr.innerHTML = `
-        <td>${dt.toLocaleString()}</td>
-        <td>${m.product?.name || m.productName || ('ID '+m.productId)}</td>
-        <td><span class="badge ${typeDisplay === 'Entrada' ? 'bg-success':'bg-danger'}">${typeDisplay}</span></td>
-        <td>${Math.abs(m.quantityChange)}</td>
-        <td>${escapeHtml(m.operator || 'Sistema')}</td>
+        <td data-label="Data">${dt.toLocaleString()}</td>
+        <td data-label="Produto">${m.product?.name || m.productName || ('ID '+m.productId)}</td>
+        <td data-label="Tipo"><span class="badge ${typeDisplay === 'Entrada' ? 'bg-success':'bg-danger'}">${typeDisplay}</span></td>
+        <td data-label="Quantidade">${Math.abs(m.quantityChange)}</td>
+        <td data-label="Operador">${escapeHtml(m.operator || 'Sistema')}</td>
       `;
       tbody.appendChild(tr);
     });
@@ -886,14 +912,14 @@ async function loadAISuggestions() {
       const methodBadge = (prediction.daysWithOutflow || 0) < 3 ? 'Pouco histórico' : (method.includes('ML.NET') ? 'Modelo ML' : 'Média histórica');
       return `
         <tr>
-          <td>${escapeHtml(product.name)}</td>
-          <td>${product.quantity}</td>
-          <td>${product.minQuantity}</td>
-          <td>${Number(prediction.predictedDailyOutflow || 0).toFixed(1)}</td>
-          <td>${prediction.daysWithOutflow || 0}/${prediction.observationDays || 0} dia(s)</td>
-          <td>${Math.round(prediction.confidencePercent || 0)}%</td>
-          <td><strong>${prediction.recommendedOrder || 0}</strong></td>
-          <td><span class="badge ${methodBadge === 'Modelo ML' ? 'bg-primary' : 'bg-muted'}">${methodBadge}</span></td>
+          <td data-label="Produto">${escapeHtml(product.name)}</td>
+          <td data-label="Estoque">${product.quantity}</td>
+          <td data-label="Mínimo">${product.minQuantity}</td>
+          <td data-label="Saída/dia">${Number(prediction.predictedDailyOutflow || 0).toFixed(1)}</td>
+          <td data-label="Histórico">${prediction.daysWithOutflow || 0}/${prediction.observationDays || 0} dia(s)</td>
+          <td data-label="Confiança">${Math.round(prediction.confidencePercent || 0)}%</td>
+          <td data-label="Comprar"><strong>${prediction.recommendedOrder || 0}</strong></td>
+          <td data-label="Método"><span class="badge ${methodBadge === 'Modelo ML' ? 'bg-primary' : 'bg-muted'}">${methodBadge}</span></td>
         </tr>
       `;
     }).join('');
@@ -1006,17 +1032,17 @@ function renderUsersAdminTable() {
 
   tbody.innerHTML = '';
   systemUsers.forEach(user => {
-    const tr = document.createElement('tr');
-    const isSelected = selectedAdminUserId === user.id;
-    const statusClass = !user.isActive ? 'bg-muted' : (user.mustChangePassword ? 'bg-warning' : 'bg-success');
-    const statusText = user.isActive ? (user.mustChangePassword ? 'Troca pendente' : 'Ativo') : 'Inativo';
-    tr.innerHTML = `
-      <td>${user.id}</td>
-      <td>${escapeHtml(user.username)}</td>
-      <td>${escapeHtml(user.name || '-')}</td>
-      <td>${escapeHtml(user.role || '-')}</td>
-      <td><span class="badge ${statusClass}">${statusText}</span></td>
-      <td>
+      const tr = document.createElement('tr');
+      const isSelected = selectedAdminUserId === user.id;
+      const statusClass = !user.isActive ? 'bg-muted' : (user.mustChangePassword ? 'bg-warning' : 'bg-success');
+      const statusText = user.isActive ? (user.mustChangePassword ? 'Troca pendente' : 'Ativo') : 'Inativo';
+      tr.innerHTML = `
+      <td data-label="ID">${user.id}</td>
+      <td data-label="Usuário">${escapeHtml(user.username)}</td>
+      <td data-label="Nome">${escapeHtml(user.name || '-')}</td>
+      <td data-label="Perfil">${escapeHtml(user.role || '-')}</td>
+      <td data-label="Status"><span class="badge ${statusClass}">${statusText}</span></td>
+      <td data-label="Ações">
         <div class="table-actions">
           <button type="button" class="btn-table-action ${isSelected ? '' : 'primary'}" onclick="${isSelected ? 'cancelarEdicaoUsuarioAdmin()' : `editarUsuarioAdmin(${user.id})`}">${isSelected ? 'Cancelar' : 'Selecionar'}</button>
           <button type="button" class="btn-table-action ${user.isActive ? 'danger' : 'success'}" onclick="alterarStatusUsuarioAdmin(${user.id}, ${!user.isActive})">${user.isActive ? 'Desativar' : 'Ativar'}</button>
@@ -1042,6 +1068,7 @@ function editarUsuarioAdmin(userId) {
   document.getElementById('usuarioAdminName').value = user.name || '';
   document.getElementById('usuarioAdminRole').value = user.role || 'Operador';
   document.getElementById('usuarioAdminPassword').value = '';
+  document.getElementById('usuarioAdminForcePasswordChange').checked = true;
   document.getElementById('usuarioFormBadge').textContent = user.isActive ? 'Usuário ativo' : 'Usuário inativo';
   setUsuarioAdminFormEnabled(true);
   renderUsersAdminTable();
@@ -1053,6 +1080,7 @@ function cancelarEdicaoUsuarioAdmin() {
   document.getElementById('usuarioIdEdicao').value = '';
   document.getElementById('formUsuarioAdmin').reset();
   document.getElementById('usuarioAdminUsername').value = '';
+  document.getElementById('usuarioAdminForcePasswordChange').checked = true;
   document.getElementById('usuarioFormBadge').textContent = 'Selecione um usuário';
   setUsuarioAdminFormEnabled(false);
   renderUsersAdminTable();
@@ -1062,6 +1090,7 @@ function setUsuarioAdminFormEnabled(enabled) {
   document.getElementById('usuarioAdminName').disabled = !enabled;
   document.getElementById('usuarioAdminRole').disabled = !enabled;
   document.getElementById('usuarioAdminPassword').disabled = !enabled;
+  document.getElementById('usuarioAdminForcePasswordChange').disabled = !enabled;
   document.getElementById('btnSalvarUsuarioAdmin').disabled = !enabled;
 }
 
@@ -1116,12 +1145,37 @@ async function loadAuditLogs() {
   if (!isAdminUser()) return;
 
   try {
-    const data = await fetchJson('/api/audit-logs?page=1&pageSize=30');
+    const data = await fetchJson(`/api/audit-logs?${getAuditFilterParams()}`);
     auditLogs = data.items || [];
     renderAuditLogsTable();
   } catch (err) {
     console.error('Failed to load audit logs', err);
   }
+}
+
+function getAuditFilterParams() {
+  const query = new URLSearchParams({
+    page: 1,
+    pageSize: 30
+  });
+  const action = document.getElementById('auditActionFilter')?.value.trim() || '';
+  const entity = document.getElementById('auditEntityFilter')?.value || '';
+  const username = document.getElementById('auditUserFilter')?.value.trim() || '';
+
+  if (action) query.set('action', action);
+  if (entity) query.set('entity', entity);
+  if (username) query.set('username', username);
+  return query.toString();
+}
+
+function clearAuditFilters() {
+  const action = document.getElementById('auditActionFilter');
+  const entity = document.getElementById('auditEntityFilter');
+  const username = document.getElementById('auditUserFilter');
+  if (action) action.value = '';
+  if (entity) entity.value = '';
+  if (username) username.value = '';
+  loadAuditLogs();
 }
 
 function renderAuditLogsTable() {
@@ -1133,11 +1187,11 @@ function renderAuditLogsTable() {
     const tr = document.createElement('tr');
     const timestamp = parseUtcDate(log.timestamp);
     tr.innerHTML = `
-      <td>${timestamp.toLocaleString()}</td>
-      <td>${escapeHtml(log.username || '-')}</td>
-      <td><span class="badge bg-primary">${escapeHtml(log.action || '-')}</span></td>
-      <td>${escapeHtml(log.entity || '-')}${log.entityId ? ` #${escapeHtml(log.entityId)}` : ''}</td>
-      <td>${escapeHtml(log.details || '-')}</td>
+      <td data-label="Data">${timestamp.toLocaleString()}</td>
+      <td data-label="Usuário">${escapeHtml(log.username || '-')}</td>
+      <td data-label="Ação"><span class="badge bg-primary">${escapeHtml(log.action || '-')}</span></td>
+      <td data-label="Entidade">${escapeHtml(log.entity || '-')}${log.entityId ? ` #${escapeHtml(log.entityId)}` : ''}</td>
+      <td data-label="Detalhes">${escapeHtml(log.details || '-')}</td>
     `;
     tbody.appendChild(tr);
   });
@@ -1399,6 +1453,85 @@ function fecharModalQRCode() {
   modal.setAttribute('aria-hidden', 'true');
 }
 
+function imprimirQRCodeProduto() {
+  const qrNode = document.querySelector('#qrModalDisplay canvas, #qrModalDisplay img');
+  const productName = document.getElementById('qrModalProductName')?.textContent || 'Produto';
+  const productCode = document.getElementById('qrModalCode')?.textContent || '';
+  const productUrl = document.getElementById('qrModalLink')?.textContent || '';
+
+  if (!qrNode) {
+    showMessage('QR Code ainda não foi gerado para impressão.', 'error');
+    return;
+  }
+
+  const qrImage = qrNode.tagName.toLowerCase() === 'canvas'
+    ? qrNode.toDataURL('image/png')
+    : qrNode.getAttribute('src');
+  const printWindow = window.open('', '_blank', 'width=420,height=560');
+  if (!printWindow) {
+    showMessage('Permita pop-ups para imprimir o QR Code.', 'error');
+    return;
+  }
+
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+      <meta charset="UTF-8">
+      <title>QR Code ${escapeHtml(productCode)}</title>
+      <style>
+        * { box-sizing: border-box; }
+        body {
+          margin: 0;
+          min-height: 100vh;
+          display: grid;
+          place-items: center;
+          font-family: Arial, Helvetica, sans-serif;
+          color: #111827;
+          background: #ffffff;
+        }
+        .label {
+          width: 9cm;
+          min-height: 11cm;
+          padding: 0.7cm;
+          border: 2px solid #111827;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          text-align: center;
+          gap: 0.35cm;
+        }
+        h1 { margin: 0; font-size: 18pt; }
+        .code { font-size: 14pt; font-weight: 700; letter-spacing: 0.08em; }
+        img { width: 5.8cm; height: 5.8cm; image-rendering: pixelated; }
+        .url { max-width: 100%; overflow-wrap: anywhere; font-size: 8pt; color: #4b5563; }
+        .hint { margin-top: 0.2cm; font-size: 9pt; color: #374151; }
+        @media print {
+          body { min-height: auto; }
+          .label { page-break-inside: avoid; }
+        }
+      </style>
+    </head>
+    <body>
+      <section class="label">
+        <h1>${escapeHtml(productName)}</h1>
+        <div class="code">${escapeHtml(productCode)}</div>
+        <img src="${qrImage}" alt="QR Code do produto">
+        <div class="hint">Escaneie para registrar movimentação</div>
+        <div class="url">${escapeHtml(productUrl)}</div>
+      </section>
+      <script>
+        window.addEventListener('load', () => {
+          window.print();
+        });
+      <\/script>
+    </body>
+    </html>
+  `);
+  printWindow.document.close();
+}
+
 async function abrirProdutoPorQRCode(produtoId) {
   if (!currentUser) {
     pendingQrProductId = produtoId;
@@ -1485,6 +1618,17 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('backupDatabaseBtn').addEventListener('click', () => downloadAuthenticatedFile('/api/backup/database', 'inventory-backup.db'));
   document.getElementById('backupJsonBtn').addEventListener('click', () => downloadAuthenticatedFile('/api/backup/export', 'inventory-export.json'));
   document.getElementById('refreshAuditBtn').addEventListener('click', loadAuditLogs);
+  document.getElementById('applyAuditFiltersBtn').addEventListener('click', loadAuditLogs);
+  document.getElementById('clearAuditFiltersBtn').addEventListener('click', clearAuditFilters);
+  ['auditActionFilter', 'auditEntityFilter', 'auditUserFilter'].forEach(id => {
+    document.getElementById(id).addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        loadAuditLogs();
+      }
+    });
+  });
+  document.getElementById('auditEntityFilter').addEventListener('change', loadAuditLogs);
 
   document.getElementById('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -1588,6 +1732,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const name = document.getElementById('usuarioAdminName').value.trim();
     const role = document.getElementById('usuarioAdminRole').value;
     const password = document.getElementById('usuarioAdminPassword').value;
+    const mustChangePassword = document.getElementById('usuarioAdminForcePasswordChange').checked;
 
     if (!userId) {
       showMessage('Selecione um usuário para editar.', 'error');
@@ -1610,11 +1755,11 @@ document.addEventListener('DOMContentLoaded', () => {
         await fetchJson(`/api/users/${userId}/password`, {
           method: 'PUT',
           headers: adminHeaders({ 'Content-Type': 'application/json' }),
-          body: JSON.stringify({ password })
+          body: JSON.stringify({ password, mustChangePassword })
         });
       }
 
-      showMessage(password ? 'Usuário atualizado e senha redefinida.' : 'Usuário atualizado com sucesso.', 'success');
+      showMessage(password ? `Usuário atualizado e senha redefinida${mustChangePassword ? ' com troca obrigatória no próximo login' : ''}.` : 'Usuário atualizado com sucesso.', 'success');
       cancelarEdicaoUsuarioAdmin();
       await loadUsersAdmin();
     } catch (err) {

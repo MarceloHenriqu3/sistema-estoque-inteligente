@@ -408,9 +408,9 @@ app.MapPut("/api/users/{id}/password", async (int id, PasswordResetDto dto, Inve
     if (user == null) return Results.NotFound();
 
     user.PasswordHash = CreatePasswordHash(dto.Password);
-    user.MustChangePassword = !user.Role.Equals("Administrador", StringComparison.OrdinalIgnoreCase);
+    user.MustChangePassword = dto.MustChangePassword ?? !user.Role.Equals("Administrador", StringComparison.OrdinalIgnoreCase);
     await db.SaveChangesAsync();
-    await LogAuditAsync(db, httpContext, "RESET_PASSWORD", "User", user.Id.ToString(), $"Senha redefinida pelo administrador para: {user.Username}");
+    await LogAuditAsync(db, httpContext, "RESET_PASSWORD", "User", user.Id.ToString(), $"Senha redefinida pelo administrador para: {user.Username}; troca no próximo login: {(user.MustChangePassword ? "sim" : "não")}");
 
     return Results.Ok(new { user.Id, user.Username, user.Name, user.Role, user.IsActive, user.MustChangePassword });
 }).RequireAuthorization("Admin");
@@ -715,11 +715,12 @@ app.MapPost("/api/ai/test-history", async (AiTestHistoryDto dto, InventoryContex
     return Results.Ok(new { product.Id, product.Name, daysGenerated = 7, averageOutflow, replacedMovements = existingSimulation.Count });
 }).RequireAuthorization("Admin");
 
-app.MapGet("/api/audit-logs", async (int? page, int? pageSize, string? action, string? entity, InventoryContext db) =>
+app.MapGet("/api/audit-logs", async (int? page, int? pageSize, string? action, string? entity, string? username, InventoryContext db) =>
 {
     var q = db.AuditLogs.AsQueryable();
     if (!string.IsNullOrWhiteSpace(action)) q = q.Where(log => log.Action.Contains(action));
     if (!string.IsNullOrWhiteSpace(entity)) q = q.Where(log => log.Entity == entity);
+    if (!string.IsNullOrWhiteSpace(username)) q = q.Where(log => log.Username != null && log.Username.Contains(username));
 
     var total = await q.CountAsync();
     var p = Math.Max(1, page.GetValueOrDefault(1));
@@ -1101,6 +1102,7 @@ public class UserStatusDto
 public class PasswordResetDto
 {
     public string Password { get; set; } = string.Empty;
+    public bool? MustChangePassword { get; set; }
 }
 
 public class ChangeOwnPasswordDto
