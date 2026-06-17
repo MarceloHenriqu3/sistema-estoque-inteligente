@@ -23,8 +23,10 @@
             <button class="nav-btn" onclick="switchTab('cadastro-produto')">Cadastrar Produto</button>
             <button class="nav-btn" onclick="switchTab('categorias')">Categorias</button>
             <button class="nav-btn" onclick="switchTab('estoque')">Consulta de Estoque</button>
+            <button class="nav-btn" onclick="switchTab('inventario')">Inventário Mensal</button>
             <button class="nav-btn" onclick="switchTab('movimentacao')">Registrar Movimentação</button>
             <button class="nav-btn" onclick="switchTab('historico')">Histórico Detalhado</button>
+            <button class="nav-btn" onclick="switchTab('kardex')">Kardex</button>
             <button class="nav-btn" onclick="switchTab('ia-preditiva')">Análise Preditiva IA</button>
         </nav>
     </aside>
@@ -47,6 +49,22 @@
                         <input type="password" id="loginPassword" class="form-control" placeholder="Digite sua senha" required>
                     </div>
                     <button type="submit" class="btn-submit">Acessar Sistema</button>
+                    <p class="auth-note"><button type="button" class="link-button" onclick="switchTab('forgot-password')">Esqueci minha senha</button></p>
+                </form>
+            </div>
+        </div>
+
+        <div id="forgot-password" class="tab-content">
+            <div class="form-layout auth-layout">
+                <h2>Recuperar Senha</h2>
+                <form id="forgotPasswordForm">
+                    <div class="form-row">
+                        <label for="forgotUsername">Usuário</label>
+                        <input type="text" id="forgotUsername" class="form-control" placeholder="Digite seu nome de usuário" required>
+                    </div>
+                    <button type="submit" class="btn-submit">Solicitar Recuperação</button>
+                    <p class="auth-note">A solicitação será registrada para que um administrador redefina sua senha.</p>
+                    <p class="auth-note"><button type="button" class="link-button" onclick="switchTab('login')">Voltar para o login</button></p>
                 </form>
             </div>
         </div>
@@ -498,6 +516,66 @@
             </div>
         </div>
 
+        <div id="inventario" class="tab-content">
+            <div class="form-layout">
+                <div class="form-heading">
+                    <div>
+                        <h2>Inventário Mensal</h2>
+                        <p>Atualize o estoque após a contagem física e registre os ajustes como movimentações de inventário.</p>
+                    </div>
+                    <span class="badge bg-primary">Contagem física</span>
+                </div>
+                <div class="filter-wrapper embedded-filter">
+                    <div class="filter-group">
+                        <label for="inventorySearch">Pesquisar Produto</label>
+                        <input type="text" id="inventorySearch" class="form-control" placeholder="Buscar por nome, código ou categoria...">
+                    </div>
+                    <div class="filter-group">
+                        <label for="inventoryNotes">Observação</label>
+                        <input type="text" id="inventoryNotes" class="form-control" placeholder="Ex.: Inventário de junho">
+                    </div>
+                    <div class="filter-group">
+                        <label>Ações</label>
+                        <div class="filter-actions">
+                            <button type="button" id="reloadInventoryBtn" class="btn-submit secondary">Recarregar</button>
+                            <button type="button" id="applyInventoryBtn" class="btn-submit">Aplicar Ajustes</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="history-summary-grid">
+                <div class="summary-card">
+                    <span>Produtos Listados</span>
+                    <strong id="inventorySummaryProducts">—</strong>
+                </div>
+                <div class="summary-card warning">
+                    <span>Itens com Divergência</span>
+                    <strong id="inventorySummaryDiffs">—</strong>
+                </div>
+                <div class="summary-card">
+                    <span>Saldo de Ajustes</span>
+                    <strong id="inventorySummaryNet">—</strong>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table id="tabelaInventario">
+                    <thead>
+                        <tr>
+                            <th>Cód. QR</th>
+                            <th>Produto</th>
+                            <th>Categoria</th>
+                            <th>Estoque Sistema</th>
+                            <th>Contagem Física</th>
+                            <th>Diferença</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
         <div id="historico" class="tab-content">
             <div class="filter-wrapper">
                 <div class="filter-group">
@@ -563,6 +641,66 @@
                     </tbody>
                 </table>
                 <div id="paginationHistorico" class="pagination-controls"></div>
+            </div>
+        </div>
+
+        <div id="kardex" class="tab-content">
+            <div class="filter-wrapper">
+                <div class="filter-group">
+                    <label for="kardexProductSelect">Produto</label>
+                    <select id="kardexProductSelect" class="form-control"></select>
+                </div>
+                <div class="filter-group">
+                    <label for="kardexFrom">Data Inicial</label>
+                    <input type="date" id="kardexFrom" class="form-control">
+                </div>
+                <div class="filter-group">
+                    <label for="kardexTo">Data Final</label>
+                    <input type="date" id="kardexTo" class="form-control">
+                </div>
+                <div class="filter-group">
+                    <label>Ações</label>
+                    <div class="filter-actions">
+                        <button type="button" id="loadKardexBtn" class="btn-submit">Consultar</button>
+                        <button type="button" id="clearKardexBtn" class="btn-submit secondary">Limpar</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="history-summary-grid">
+                <div class="summary-card">
+                    <span>Saldo Inicial</span>
+                    <strong id="kardexOpeningBalance">—</strong>
+                </div>
+                <div class="summary-card success">
+                    <span>Entradas</span>
+                    <strong id="kardexTotalIn">—</strong>
+                </div>
+                <div class="summary-card danger">
+                    <span>Saídas</span>
+                    <strong id="kardexTotalOut">—</strong>
+                </div>
+                <div class="summary-card">
+                    <span>Saldo Atual</span>
+                    <strong id="kardexCurrentBalance">—</strong>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table id="tabelaKardex">
+                    <thead>
+                        <tr>
+                            <th>Data / Hora</th>
+                            <th>Produto</th>
+                            <th>Tipo</th>
+                            <th>Entrada</th>
+                            <th>Saída</th>
+                            <th>Saldo</th>
+                            <th>Operador</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
             </div>
         </div>
 
@@ -680,6 +818,7 @@
                 <button type="button" class="btn-submit" onclick="imprimirQRCodeProduto()">Imprimir QR Code</button>
             </div>
         </div>
+
     </div>
 
     <div id="produtoQrModal" class="modal-overlay" aria-hidden="true">

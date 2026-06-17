@@ -11,6 +11,8 @@ let systemUsers = [];
 let auditLogs = [];
 let selectedAdminUserId = null;
 let movementProducts = [];
+let inventoryProducts = [];
+let kardexProducts = [];
 let aiInsightsRefreshPromise = null;
 const API_BASE_URL = window.location.protocol === 'file:' ? 'http://localhost:5123' : '';
 const SESSION_USER_KEY = 'estoqueInteligente.currentUser';
@@ -548,6 +550,203 @@ async function loadProductsIntoMovementSelect() {
   }
 }
 
+async function loadInventoryProducts() {
+  try {
+    inventoryProducts = await fetchJson('/api/inventory/products');
+    renderInventoryTable();
+    renderKardexProductOptions();
+  } catch (err) {
+    showMessage('Erro ao carregar inventário: ' + err.message, 'error');
+  }
+}
+
+function getInventoryFilteredProducts() {
+  const searchValue = (document.getElementById('inventorySearch')?.value || '').toLowerCase().trim();
+  if (!searchValue) return inventoryProducts;
+
+  return inventoryProducts.filter(product => {
+    const code = formatProductCode(product.id).toLowerCase();
+    return code.includes(searchValue)
+      || (product.name || '').toLowerCase().includes(searchValue)
+      || (product.category || '').toLowerCase().includes(searchValue);
+  });
+}
+
+function renderInventoryTable() {
+  const tbody = document.querySelector('#tabelaInventario tbody');
+  if (!tbody) return;
+
+  const products = getInventoryFilteredProducts();
+  tbody.innerHTML = '';
+  products.forEach(product => {
+    const tr = document.createElement('tr');
+    tr.dataset.productId = product.id;
+    tr.dataset.currentQuantity = product.quantity;
+    tr.innerHTML = `
+      <td data-label="Código"><code>${formatProductCode(product.id)}</code></td>
+      <td data-label="Produto">${escapeHtml(product.name)}</td>
+      <td data-label="Categoria">${escapeHtml(product.category || '-')}</td>
+      <td data-label="Sistema">${product.quantity}</td>
+      <td data-label="Contagem"><input type="number" class="form-control inventory-count-input" min="0" value="${product.quantity}" data-product-id="${product.id}"></td>
+      <td data-label="Diferença"><span class="inventory-diff">0</span></td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  if (!products.length) {
+    tbody.innerHTML = '<tr><td colspan="6">Nenhum produto encontrado para inventário.</td></tr>';
+  }
+
+  document.querySelectorAll('.inventory-count-input').forEach(input => {
+    input.addEventListener('input', updateInventoryDiffs);
+  });
+  updateInventoryDiffs();
+}
+
+function updateInventoryDiffs() {
+  let listed = 0;
+  let diffs = 0;
+  let net = 0;
+
+  document.querySelectorAll('#tabelaInventario tbody tr').forEach(row => {
+    const input = row.querySelector('.inventory-count-input');
+    const diffEl = row.querySelector('.inventory-diff');
+    if (!input || !diffEl) return;
+
+    listed++;
+    const currentQuantity = parseInt(row.dataset.currentQuantity || '0', 10);
+    const countedQuantity = parseInt(input.value || '0', 10);
+    const diff = countedQuantity - currentQuantity;
+    net += diff;
+    if (diff !== 0) diffs++;
+    diffEl.textContent = diff > 0 ? `+${diff}` : diff.toString();
+    diffEl.className = `inventory-diff ${diff > 0 ? 'positive' : diff < 0 ? 'negative' : ''}`;
+  });
+
+  document.getElementById('inventorySummaryProducts').textContent = listed;
+  document.getElementById('inventorySummaryDiffs').textContent = diffs;
+  document.getElementById('inventorySummaryNet').textContent = net > 0 ? `+${net}` : net;
+}
+
+async function applyInventoryAdjustments() {
+  const items = Array.from(document.querySelectorAll('.inventory-count-input'))
+    .map(input => ({
+      productId: parseInt(input.dataset.productId, 10),
+      countedQuantity: parseInt(input.value || '0', 10),
+      currentQuantity: parseInt(input.closest('tr')?.dataset.currentQuantity || '0', 10)
+    }))
+    .filter(item => item.productId && item.countedQuantity !== item.currentQuantity)
+    .map(({ productId, countedQuantity }) => ({ productId, countedQuantity }));
+
+  if (!items.length) {
+    showMessage('Nenhuma divergência para ajustar.', 'success');
+    return;
+  }
+
+  if (!confirm(`Aplicar ${items.length} ajuste(s) de inventário ao estoque?`)) return;
+
+  try {
+    const result = await fetchJson('/api/inventory/adjustments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        items,
+        notes: document.getElementById('inventoryNotes')?.value || ''
+      })
+    });
+    showMessage(`Inventário aplicado: ${result.adjusted} produto(s) ajustado(s).`, 'success');
+    document.getElementById('inventoryNotes').value = '';
+    await loadInventoryProducts();
+    await loadProductsIntoTable();
+    await loadMovementsIntoHistory();
+    await loadDashboard();
+  } catch (err) {
+    showMessage('Erro ao aplicar inventário: ' + err.message, 'error');
+  }
+}
+
+function renderKardexProductOptions() {
+  const select = document.getElementById('kardexProductSelect');
+  if (!select) return;
+
+  const currentValue = select.value;
+  kardexProducts = inventoryProducts.length ? inventoryProducts : movementProducts;
+  select.innerHTML = '';
+  kardexProducts.forEach(product => {
+    const opt = document.createElement('option');
+    opt.value = product.id;
+    opt.textContent = `${product.name} (${formatProductCode(product.id)})`;
+    select.appendChild(opt);
+  });
+  if (currentValue && Array.from(select.options).some(option => option.value === currentValue)) {
+    select.value = currentValue;
+  }
+}
+
+function getKardexQueryParams() {
+  const query = new URLSearchParams();
+  const productId = document.getElementById('kardexProductSelect')?.value || '';
+  const from = document.getElementById('kardexFrom')?.value || '';
+  const to = document.getElementById('kardexTo')?.value || '';
+  if (productId) query.set('productId', productId);
+  if (from) {
+    const [year, month, day] = from.split('-').map(Number);
+    query.set('from', new Date(year, month - 1, day, 0, 0, 0).toISOString());
+  }
+  if (to) {
+    const [year, month, day] = to.split('-').map(Number);
+    query.set('to', new Date(year, month - 1, day + 1, 0, 0, 0).toISOString());
+  }
+  return query.toString();
+}
+
+async function loadKardex() {
+  try {
+    if (!document.getElementById('kardexProductSelect')?.value) {
+      await loadInventoryProducts();
+    }
+
+    const query = getKardexQueryParams();
+    if (!query.includes('productId=')) {
+      document.querySelector('#tabelaKardex tbody').innerHTML = '<tr><td colspan="7">Selecione um produto para consultar o Kardex.</td></tr>';
+      return;
+    }
+
+    const data = await fetchJson(`/api/kardex?${query}`);
+    const rows = data.rows || [];
+    const totalIn = rows.reduce((sum, row) => sum + Number(row.quantityIn || 0), 0);
+    const totalOut = rows.reduce((sum, row) => sum + Number(row.quantityOut || 0), 0);
+
+    document.getElementById('kardexOpeningBalance').textContent = data.openingBalance ?? 0;
+    document.getElementById('kardexTotalIn').textContent = totalIn;
+    document.getElementById('kardexTotalOut').textContent = totalOut;
+    document.getElementById('kardexCurrentBalance').textContent = data.currentBalance ?? 0;
+
+    const tbody = document.querySelector('#tabelaKardex tbody');
+    tbody.innerHTML = rows.map(row => {
+      const typeDisplay = normalizeMovementType(row.type || (row.quantityChange > 0 ? 'Entrada' : 'Saida'));
+      const dt = parseUtcDate(row.timestamp);
+      return `
+        <tr>
+          <td data-label="Data">${dt.toLocaleString()}</td>
+          <td data-label="Produto">${escapeHtml(data.product?.name || '-')}</td>
+          <td data-label="Tipo"><span class="badge ${typeDisplay === 'Entrada' ? 'bg-success' : typeDisplay === 'Ajuste' ? 'bg-warning' : 'bg-danger'}">${typeDisplay}</span></td>
+          <td data-label="Entrada">${row.quantityIn || 0}</td>
+          <td data-label="Saída">${row.quantityOut || 0}</td>
+          <td data-label="Saldo">${row.balanceAfter}</td>
+          <td data-label="Operador">${escapeHtml(row.operator || 'Sistema')}</td>
+        </tr>
+      `;
+    }).join('');
+
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="7">Nenhuma movimentação encontrada para o período.</td></tr>';
+    }
+  } catch (err) {
+    showMessage('Erro ao carregar Kardex: ' + err.message, 'error');
+  }
+}
+
 function renderMovementProductOptions() {
     const select = document.getElementById('movProductSelect');
     const searchValue = (document.getElementById('movProductSearch')?.value || '').toLowerCase().trim();
@@ -691,6 +890,7 @@ function renderProductsPaginationControls() {
 function normalizeMovementType(type) {
   if (!type) return '';
   const raw = type.toString().toLowerCase();
+  if (raw.includes('adjust') || raw.includes('invent')) return 'Ajuste';
   if (raw.includes('in')) return 'Entrada';
   if (raw.includes('out') || raw.includes('saída') || raw.includes('saida')) return 'Saida';
   if (raw.includes('entrada')) return 'Entrada';
@@ -742,7 +942,7 @@ async function loadMovementsIntoHistory() {
       tr.innerHTML = `
         <td data-label="Data">${dt.toLocaleString()}</td>
         <td data-label="Produto">${m.product?.name || m.productName || ('ID '+m.productId)}</td>
-        <td data-label="Tipo"><span class="badge ${typeDisplay === 'Entrada' ? 'bg-success':'bg-danger'}">${typeDisplay}</span></td>
+        <td data-label="Tipo"><span class="badge ${typeDisplay === 'Entrada' ? 'bg-success' : typeDisplay === 'Ajuste' ? 'bg-warning' : 'bg-danger'}">${typeDisplay}</span></td>
         <td data-label="Quantidade">${Math.abs(m.quantityChange)}</td>
         <td data-label="Operador">${escapeHtml(m.operator || 'Sistema')}</td>
       `;
@@ -1236,7 +1436,7 @@ async function downloadAuthenticatedFile(url, fallbackFileName) {
 }
 
 function switchTab(tabId) {
-  if (!currentUser && tabId !== 'login') {
+  if (!currentUser && tabId !== 'login' && tabId !== 'forgot-password') {
     showMessage('Faça login para acessar o sistema.', 'error');
     return;
   }
@@ -1258,6 +1458,7 @@ function switchTab(tabId) {
   buttons.forEach(btn => { if(btn.getAttribute('onclick') && btn.getAttribute('onclick').includes(tabId)) btn.classList.add('active'); });
   const titles = {
     'login': 'Entrar no Sistema',
+    'forgot-password': 'Recuperar Senha',
     'change-password': 'Alterar Senha Inicial',
     'register': 'Criar Novo Usuário',
     'usuarios': 'Gerenciar Usuários',
@@ -1265,8 +1466,10 @@ function switchTab(tabId) {
     'cadastro-produto': 'Cadastrar Novo Produto',
     'categorias': 'Cadastro de Categorias',
     'estoque': 'Consulta de Estoque',
+    'inventario': 'Inventário Mensal',
     'movimentacao': 'Controle de Entrada e Saída via QR Code',
     'historico': 'Histórico e Auditoria de Logs',
+    'kardex': 'Kardex de Estoque',
     'ia-preditiva': 'Módulo Analítico e Inteligência Artificial'
   };
   document.getElementById('page-title').innerText = titles[tabId] || '';
@@ -1277,6 +1480,12 @@ function switchTab(tabId) {
   }
   if (tabId === 'ia-preditiva') {
     refreshAiInsightsInBackground();
+  }
+  if (tabId === 'inventario') {
+    loadInventoryProducts();
+  }
+  if (tabId === 'kardex') {
+    loadInventoryProducts().then(loadKardex);
   }
 }
 
@@ -1628,6 +1837,16 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('movTypeSelect').addEventListener('change', updateMovementProductPanel);
   document.getElementById('movQtyInput').addEventListener('input', updateMovementProductPanel);
   document.getElementById('iaHorizonSelect').addEventListener('change', loadAISuggestions);
+  document.getElementById('inventorySearch').addEventListener('input', renderInventoryTable);
+  document.getElementById('reloadInventoryBtn').addEventListener('click', loadInventoryProducts);
+  document.getElementById('applyInventoryBtn').addEventListener('click', applyInventoryAdjustments);
+  document.getElementById('loadKardexBtn').addEventListener('click', loadKardex);
+  document.getElementById('kardexProductSelect').addEventListener('change', loadKardex);
+  document.getElementById('clearKardexBtn').addEventListener('click', () => {
+    document.getElementById('kardexFrom').value = '';
+    document.getElementById('kardexTo').value = '';
+    loadKardex();
+  });
   document.getElementById('backupDatabaseBtn').addEventListener('click', () => downloadAuthenticatedFile('/api/backup/database', 'inventory-backup.db'));
   document.getElementById('backupJsonBtn').addEventListener('click', () => downloadAuthenticatedFile('/api/backup/export', 'inventory-export.json'));
   document.getElementById('refreshAuditBtn').addEventListener('click', loadAuditLogs);
@@ -1642,6 +1861,35 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
   document.getElementById('auditEntityFilter').addEventListener('change', loadAuditLogs);
+
+  document.getElementById('forgotPasswordForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = document.getElementById('forgotUsername').value.trim();
+    const submitButton = document.querySelector('#forgotPasswordForm button[type="submit"]');
+
+    try {
+      if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.textContent = 'Enviando...';
+      }
+      const response = await authFetch('/api/users/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username })
+      });
+      if (!response.ok) throw new Error(await response.text());
+      document.getElementById('forgotPasswordForm').reset();
+      showMessage('Solicitação registrada. Procure o administrador para receber uma nova senha.', 'success');
+      switchTab('login');
+    } catch (err) {
+      showMessage('Erro ao solicitar recuperação: ' + err.message, 'error');
+    } finally {
+      if (submitButton) {
+        submitButton.disabled = false;
+        submitButton.textContent = 'Solicitar Recuperação';
+      }
+    }
+  });
 
   document.getElementById('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();

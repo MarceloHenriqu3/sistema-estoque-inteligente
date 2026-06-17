@@ -344,6 +344,25 @@ app.MapPost("/api/users/login", async (LoginDto dto, InventoryContext db, HttpCo
     });
 });
 
+app.MapPost("/api/users/forgot-password", async (ForgotPasswordDto dto, InventoryContext db, HttpContext httpContext) =>
+{
+    var username = dto.Username?.Trim();
+    if (string.IsNullOrWhiteSpace(username))
+        return Results.BadRequest("Informe o usuário para solicitar a recuperação de senha.");
+
+    var user = await db.Users.SingleOrDefaultAsync(u => u.Username == username);
+    if (user != null)
+    {
+        await LogAuditAsync(db, httpContext, "PASSWORD_RECOVERY_REQUEST", "User", user.Id.ToString(), $"Solicitação de recuperação de senha para: {user.Username}", user.Username);
+    }
+    else
+    {
+        await LogAuditAsync(db, httpContext, "PASSWORD_RECOVERY_REQUEST_UNKNOWN", "User", null, "Solicitação de recuperação para usuário não encontrado.", username);
+    }
+
+    return Results.Ok(new { message = "Se o usuário existir, a solicitação será analisada pelo administrador." });
+});
+
 app.MapGet("/api/users", async (InventoryContext db) =>
 {
     var users = await db.Users
@@ -521,6 +540,128 @@ app.MapPut("/api/products/{id}/active", async (int id, ProductStatusDto dto, Inv
     await db.SaveChangesAsync();
     await LogAuditAsync(db, httpContext, dto.IsActive ? "ACTIVATE" : "DEACTIVATE", "Product", product.Id.ToString(), $"Produto {(dto.IsActive ? "reativado" : "desativado")}: {product.Name}");
     return Results.Ok(product);
+}).RequireAuthorization("PasswordReady");
+
+app.MapGet("/api/inventory/products", async (InventoryContext db) =>
+{
+    var products = await db.Products
+        .OrderBy(p => p.Name)
+        .Select(p => new
+        {
+            p.Id,
+            p.Name,
+            p.Category,
+            p.Quantity,
+            p.MinQuantity,
+            p.Price,
+            p.IsActive
+        })
+        .ToListAsync();
+
+    return Results.Json(products);
+}).RequireAuthorization("PasswordReady");
+
+app.MapPost("/api/inventory/adjustments", async (InventoryAdjustmentDto dto, InventoryContext db, HttpContext httpContext) =>
+{
+    if (dto.Items == null || dto.Items.Count == 0)
+        return Results.BadRequest("Informe ao menos um item contado no inventário.");
+
+    var productIds = dto.Items.Select(i => i.ProductId).Distinct().ToList();
+    var products = await db.Products.Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
+    var operatorName = GetAuthenticatedUserName(httpContext) ?? "Sistema";
+    var adjusted = 0;
+    var ignored = 0;
+    var details = new List<object>();
+
+    foreach (var item in dto.Items)
+    {
+        if (item.CountedQuantity < 0)
+            return Results.BadRequest("A quantidade contada não pode ser negativa.");
+
+        if (!products.TryGetValue(item.ProductId, out var product))
+            return Results.BadRequest($"Produto {item.ProductId} não encontrado.");
+
+        var previousQuantity = product.Quantity;
+        var difference = item.CountedQuantity - previousQuantity;
+        if (difference == 0)
+        {
+            ignored++;
+            continue;
+        }
+
+        product.Quantity = item.CountedQuantity;
+        var movement = new Movement
+        {
+            ProductId = product.Id,
+            QuantityChange = difference,
+            Type = "ADJUSTMENT",
+            Timestamp = DateTime.UtcNow,
+            Operator = operatorName
+        };
+        db.Movements.Add(movement);
+        adjusted++;
+        details.Add(new
+        {
+            product.Id,
+            product.Name,
+            previousQuantity,
+            countedQuantity = item.CountedQuantity,
+            difference
+        });
+    }
+
+    await db.SaveChangesAsync();
+    await LogAuditAsync(db, httpContext, "INVENTORY_ADJUSTMENT", "Movement", null, $"Inventário ajustado: {adjusted} produto(s); sem alteração: {ignored}; observação: {dto.Notes}".Trim());
+
+    return Results.Ok(new { adjusted, ignored, details });
+}).RequireAuthorization("PasswordReady");
+
+app.MapGet("/api/kardex", async (int productId, DateTime? from, DateTime? to, InventoryContext db) =>
+{
+    var product = await db.Products.FindAsync(productId);
+    if (product == null) return Results.NotFound("Produto não encontrado.");
+
+    var allMovements = await db.Movements
+        .Where(m => m.ProductId == productId)
+        .OrderBy(m => m.Timestamp)
+        .ThenBy(m => m.Id)
+        .ToListAsync();
+
+    var initialBalance = product.Quantity - allMovements.Sum(m => m.QuantityChange);
+    var runningBalance = initialBalance;
+    var rows = new List<object>();
+    foreach (var movement in allMovements)
+    {
+        runningBalance += movement.QuantityChange;
+        var insideFrom = !from.HasValue || movement.Timestamp >= from.Value;
+        var insideTo = !to.HasValue || movement.Timestamp < GetMovementEndFilter(to.Value);
+        if (insideFrom && insideTo)
+        {
+            rows.Add(new
+            {
+                movement.Id,
+                movement.Timestamp,
+                movement.Type,
+                movement.QuantityChange,
+                QuantityIn = movement.QuantityChange > 0 ? movement.QuantityChange : 0,
+                QuantityOut = movement.QuantityChange < 0 ? Math.Abs(movement.QuantityChange) : 0,
+                BalanceAfter = runningBalance,
+                movement.Operator
+            });
+        }
+    }
+
+    var openingBalance = initialBalance + allMovements
+        .Where(m => from.HasValue && m.Timestamp < from.Value)
+        .Sum(m => m.QuantityChange);
+
+    return Results.Json(new
+    {
+        product = new { product.Id, product.Name, product.Category, product.Quantity, product.MinQuantity, product.Price, product.IsActive },
+        openingBalance,
+        currentBalance = product.Quantity,
+        rows
+    });
 }).RequireAuthorization("PasswordReady");
 
 app.MapGet("/api/movements", async (int? page, int? pageSize, int? productId, DateTime? from, DateTime? to, string? type, string? search, string? operatorName, InventoryContext db) =>
@@ -1060,6 +1201,18 @@ public class MovementDto
     public string? Operator { get; set; }
 }
 
+public class InventoryAdjustmentDto
+{
+    public List<InventoryAdjustmentItemDto> Items { get; set; } = new();
+    public string? Notes { get; set; }
+}
+
+public class InventoryAdjustmentItemDto
+{
+    public int ProductId { get; set; }
+    public int CountedQuantity { get; set; }
+}
+
 public class ProductStatusDto
 {
     public bool IsActive { get; set; }
@@ -1090,6 +1243,11 @@ public class LoginDto
 {
     public string Username { get; set; } = string.Empty;
     public string Password { get; set; } = string.Empty;
+}
+
+public class ForgotPasswordDto
+{
+    public string Username { get; set; } = string.Empty;
 }
 
 public class UserUpdateDto

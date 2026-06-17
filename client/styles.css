@@ -57,6 +57,7 @@ aside {
   border-top-right-radius: 30px;
   border-bottom-right-radius: 30px;
   z-index: 10;
+  overflow: hidden;
 }
 
 .admin-only {
@@ -80,6 +81,24 @@ nav {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 0.15rem;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.35) transparent;
+}
+
+nav::-webkit-scrollbar {
+  width: 0.45rem;
+}
+
+nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+nav::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
 }
 
 .nav-btn {
@@ -668,6 +687,32 @@ header h1 {
   font-weight: 700;
 }
 
+.inventory-count-input {
+  max-width: 140px;
+  padding: 0.7rem 0.8rem;
+}
+
+.inventory-diff {
+  display: inline-flex;
+  min-width: 3.5rem;
+  justify-content: center;
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #334155;
+  font-weight: 800;
+}
+
+.inventory-diff.positive {
+  background: rgba(22, 163, 74, 0.12);
+  color: var(--success);
+}
+
+.inventory-diff.negative {
+  background: rgba(220, 38, 38, 0.12);
+  color: var(--danger);
+}
+
 .filter-wrapper {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
@@ -679,6 +724,12 @@ header h1 {
 .audit-filter-wrapper {
   margin-top: 1rem;
   margin-bottom: 1rem;
+  box-shadow: none;
+  background: #f8fafc;
+}
+
+.embedded-filter {
+  margin: 0;
   box-shadow: none;
   background: #f8fafc;
 }
@@ -1095,6 +1146,7 @@ tbody tr:hover {
     flex-direction: row;
     gap: 0.5rem;
     overflow-x: auto;
+    overflow-y: hidden;
     padding-bottom: 0.2rem;
     scrollbar-width: thin;
   }
@@ -1351,6 +1403,11 @@ tbody tr:hover {
     width: 100%;
     min-height: 2.35rem;
     justify-content: center;
+  }
+
+  .inventory-count-input {
+    max-width: 120px;
+    text-align: right;
   }
 
   .pagination-controls {
